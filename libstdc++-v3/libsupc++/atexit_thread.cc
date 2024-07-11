@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <new>
 #include "bits/gthr.h"
+<<<<<<< HEAD
 
 #ifdef __USING_MCFGTHREAD__
 
@@ -47,6 +48,8 @@ __cxa_thread_atexit (void (_GLIBCXX_CDTOR_CALLABI *dtor)(void *),
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
+=======
+>>>>>>> parent of 1ed3ba0549f (os_defines.h (_GLIBCXX_THREAD_ATEXIT_WIN32): Define.)
 
 // Simplify it a little for this file.
 #ifndef _GLIBCXX_CDTOR_CALLABI
@@ -78,9 +81,6 @@ namespace {
     void (_GLIBCXX_CDTOR_CALLABI *destructor)(void *);
     void *object;
     elt *next;
-#ifdef _GLIBCXX_THREAD_ATEXIT_WIN32
-    HMODULE dll;
-#endif
   };
 
   // Keep a per-thread list of cleanups in gthread_key storage.
@@ -96,11 +96,6 @@ namespace {
       {
 	elt *old_e = e;
 	e->destructor (e->object);
-#ifdef _GLIBCXX_THREAD_ATEXIT_WIN32
-	/* Decrement DLL count */
-	if (e->dll)
-	  FreeLibrary (e->dll);
-#endif
 	e = e->next;
 	delete (old_e);
       }
@@ -194,14 +189,6 @@ __cxxabiv1::__cxa_thread_atexit (void (_GLIBCXX_CDTOR_CALLABI *dtor)(void *),
   new_elt->destructor = dtor;
   new_elt->object = obj;
   new_elt->next = first;
-#ifdef _GLIBCXX_THREAD_ATEXIT_WIN32
-  /* Store the DLL address for a later call to FreeLibrary in new_elt and
-     increment DLL load count.  This blocks the unloading of the DLL
-     before the thread-local dtors have been called.  This does NOT help
-     if FreeLibrary/dlclose is called in excess. */
-  GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
-		      (LPCWSTR) dtor, &new_elt->dll);
-#endif
 
   if (__gthread_active_p ())
     __gthread_setspecific (key, new_elt);

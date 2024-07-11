@@ -47,6 +47,7 @@
 
 // See libstdc++/20806.
 #define _GLIBCXX_HAVE_DOS_BASED_FILESYSTEM 1
+<<<<<<< HEAD
 
 // Enable use of GetModuleHandleEx (requires Windows XP/2003) in
 // __cxa_thread_atexit to prevent modules from being unloaded before
@@ -56,6 +57,8 @@
 // See libstdc++/69506
 #define _GLIBCXX_USE_WEAK_REF 0
 
+=======
+>>>>>>> parent of 1ed3ba0549f (os_defines.h (_GLIBCXX_THREAD_ATEXIT_WIN32): Define.)
 #endif
 
 #endif
