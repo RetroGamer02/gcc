@@ -579,7 +579,7 @@ namespace
     bool created = false;
 #if _GLIBCXX_USE_MKDIR
     posix::mode_t mode = static_cast<std::underlying_type_t<fs::perms>>(perm);
-    if (posix::mkdir(p.c_str(), mode))
+    /*if (posix::mkdir(p.c_str(), mode))
       {
 	const int err = errno;
 	if (err != EEXIST || !is_directory(p, ec))
@@ -589,7 +589,7 @@ namespace
       {
 	ec.clear();
 	created = true;
-      }
+      }*/
 #else
     ec = std::make_error_code(std::errc::function_not_supported);
 #endif
