@@ -1,5 +1,5 @@
 /* Definitions for 64-bit SPARC running Linux-based GNU systems with ELF.
-   Copyright (C) 1996-2021 Free Software Foundation, Inc.
+   Copyright (C) 1996-2024 Free Software Foundation, Inc.
    Contributed by David S. Miller (davem@caip.rutgers.edu)
 
 This file is part of GCC.
@@ -35,8 +35,8 @@ along with GCC; see the file COPYING3.  If not see
 #if defined(TARGET_64BIT_DEFAULT) && TARGET_CPU_DEFAULT >= TARGET_CPU_v9
 #undef TARGET_DEFAULT
 #define TARGET_DEFAULT \
-  (MASK_V9 + MASK_PTR64 + MASK_64BIT + MASK_STACK_BIAS + \
-   MASK_APP_REGS + MASK_FPU + MASK_LONG_DOUBLE_128)
+  (MASK_V9 + MASK_64BIT + MASK_PTR64 + MASK_STACK_BIAS + \
+   MASK_V8PLUS + MASK_APP_REGS + MASK_FPU + MASK_LONG_DOUBLE_128)
 #endif
 
 /* This must be v9a not just v9 because by default we enable
@@ -47,7 +47,7 @@ along with GCC; see the file COPYING3.  If not see
 #undef	ENDFILE_SPEC
 #define ENDFILE_SPEC \
   GNU_USER_TARGET_ENDFILE_SPEC \
-  "%{Ofast|ffast-math|funsafe-math-optimizations:crtfastmath.o%s}"
+  "%{Ofast|ffast-math|funsafe-math-optimizations:%{!shared:crtfastmath.o%s}}"
 
 /* The default code model.  */
 #undef SPARC_DEFAULT_CMODEL
@@ -61,8 +61,8 @@ along with GCC; see the file COPYING3.  If not see
 
 /* Define for support of TFmode long double.
    SPARC ABI says that long double is 4 words.  */
-#undef LONG_DOUBLE_TYPE_SIZE
-#define LONG_DOUBLE_TYPE_SIZE (TARGET_LONG_DOUBLE_128 ? 128 : 64)
+#undef SPARC_LONG_DOUBLE_TYPE_SIZE
+#define SPARC_LONG_DOUBLE_TYPE_SIZE (TARGET_LONG_DOUBLE_128 ? 128 : 64)
 
 #undef CPP_SUBTARGET_SPEC
 #define CPP_SUBTARGET_SPEC "\
@@ -162,7 +162,7 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
 "%{m32:%{m64:%emay not use both -m32 and -m64}} \
 %{m32:-mptr32 -mno-stack-bias %{!mlong-double-128:-mlong-double-64} \
   %{!mcpu*:-mcpu=cypress}} \
-%{mv8plus:-mptr32 -mno-stack-bias %{!mlong-double-128:-mlong-double-64} \
+%{mv8plus:-m32 -mptr32 -mno-stack-bias %{!mlong-double-128:-mlong-double-64} \
   %{!mcpu*:-mcpu=v9}} \
 %{!m32:%{!mcpu*:-mcpu=ultrasparc}} \
 %{!mno-vis:%{!m32:%{!mcpu=v9:-mvis}}}"

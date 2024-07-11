@@ -6,7 +6,7 @@
 --                                                                          --
 --                                B o d y                                   --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -187,7 +187,7 @@ begin
    --  Line for -gnatef switch
 
    Write_Switch_Char ("ef");
-   Write_Line ("Full source path in brief error messages");
+   Write_Line ("Full source path in brief error messages and JSON output");
 
    --  Line for -gnateF switch
 
@@ -198,6 +198,11 @@ begin
 
    Write_Switch_Char ("eG");
    Write_Line ("Generate preprocessed source");
+
+   --  Line for -gnateH switch
+
+   Write_Switch_Char ("eH");
+   Write_Line ("Set reverse Bit_Order threshold to 64");
 
    --  Line for -gnatei switch
 
@@ -483,16 +488,18 @@ begin
    Write_Line ("        .B   turn off warnings for biased representation");
    Write_Line ("        c+   turn on warnings for constant conditional");
    Write_Line ("        C*   turn off warnings for constant conditional");
-   Write_Line ("        .c+  turn on warnings for unrepped components");
-   Write_Line ("        .C*  turn off warnings for unrepped components");
+   Write_Line ("        .c+  turn on warnings for components without " &
+                                                     "representation clauses");
+   Write_Line ("        .C*  turn off warnings for components without " &
+                                                     "representation clauses");
    Write_Line ("        _c*  turn on warnings for unknown " &
                                                  "Compile_Time_Warning");
    Write_Line ("        _C   turn off warnings for unknown " &
                                                  "Compile_Time_Warning");
    Write_Line ("        d    turn on warnings for implicit dereference");
    Write_Line ("        D*   turn off warnings for implicit dereference");
-   Write_Line ("        .d   turn on tagging of warnings with -gnatw switch");
-   Write_Line ("        .D*  turn off tagging of warnings with -gnatw switch");
+   Write_Line ("        .d*  turn on tagging of warnings with -gnatw switch");
+   Write_Line ("        .D   turn off tagging of warnings with -gnatw switch");
    Write_Line ("        e    treat all warnings (but not info) as errors");
    Write_Line ("        .e   turn on every optional info/warning " &
                                                   "(no exceptions)");
@@ -510,8 +517,8 @@ begin
    Write_Line ("        .H*  turn off warnings for holes in records");
    Write_Line ("        i*+  turn on warnings for implementation unit");
    Write_Line ("        I    turn off warnings for implementation unit");
-   Write_Line ("        .i*+ turn on warnings for overlapping actuals");
-   Write_Line ("        .I   turn off warnings for overlapping actuals");
+   Write_Line ("        .i+  turn on warnings for overlapping actuals");
+   Write_Line ("        .I*  turn off warnings for overlapping actuals");
    Write_Line ("        j+   turn on warnings for obsolescent " &
                                                   "(annex J) feature");
    Write_Line ("        J*   turn off warnings for obsolescent " &
@@ -532,8 +539,10 @@ begin
                                                   "but not read");
    Write_Line ("        M*   turn off warnings for variable assigned " &
                                                   "but not read");
-   Write_Line ("        .m*+ turn on warnings for suspicious modulus value");
-   Write_Line ("        .M   turn off warnings for suspicious modulus value");
+   Write_Line ("        .m*+ turn on warnings for suspicious usage " &
+                                                      "of modular type");
+   Write_Line ("        .M   turn off warnings for suspicious usage " &
+                                                      "of modular type");
    Write_Line ("        n*   normal warning mode (cancels -gnatws/-gnatwe)");
    Write_Line ("        .n   turn on info messages for atomic " &
                                                   "synchronization");
@@ -553,6 +562,8 @@ begin
                                                   "order");
    Write_Line ("        .P*  turn off warnings for suspicious parameter " &
                                                   "order");
+   Write_Line ("        _p   turn on warnings for pedantic checks");
+   Write_Line ("        _P   turn off warnings for pedantic checks");
    Write_Line ("        q*+  turn on warnings for questionable " &
                                                   "missing parenthesis");
    Write_Line ("        Q    turn off warnings for questionable " &
@@ -561,6 +572,10 @@ begin
                                                   "record types");
    Write_Line ("        .Q*  turn off warnings for questionable layout of " &
                                                   "record types");
+   Write_Line ("        _q   turn on warnings for ignored " &
+                                                  "equality operators");
+   Write_Line ("        _Q*  turn off warnings for ignored " &
+                                                  "equality operators");
    Write_Line ("        r+   turn on warnings for redundant construct");
    Write_Line ("        R*   turn off warnings for redundant construct");
    Write_Line ("        .r+  turn on warnings for object renaming function");
@@ -570,6 +585,10 @@ begin
    Write_Line ("        s    suppress all info/warnings");
    Write_Line ("        .s   turn on warnings for overridden size clause");
    Write_Line ("        .S*  turn off warnings for overridden size clause");
+   Write_Line ("        _s+  turn on warnings for ineffective predicate " &
+                                                  "tests");
+   Write_Line ("        _S*  turn off warnings for ineffective predicate " &
+                                                   "tests");
    Write_Line ("        t    turn on warnings for tracking deleted code");
    Write_Line ("        T*   turn off warnings for tracking deleted code");
    Write_Line ("        .t*+ turn on warnings for suspicious contract");
@@ -645,6 +664,7 @@ begin
    Write_Line ("        c    check comment format (two spaces)");
    Write_Line ("        C    check comment format (one space)");
    Write_Line ("        d    check no DOS line terminators");
+   Write_Line ("        D    check declared identifiers in mixed case");
    Write_Line ("        e    check end/exit labels present");
    Write_Line ("        f    check no form feeds/vertical tabs in source");
    Write_Line ("        g    check standard GNAT style rules, same as ydISux");
@@ -668,6 +688,8 @@ begin
    Write_Line ("        u    check no unnecessary blank lines");
    Write_Line ("        x    check extra parentheses around conditionals");
    Write_Line ("        y    turn on default style checks");
+   Write_Line ("        z    check parentheses not required by operator " &
+               "precedence rules");
    Write_Line ("        -    subtract (turn off) subsequent checks");
    Write_Line ("        +    add (turn on) subsequent checks");
 
@@ -696,22 +718,12 @@ begin
       --  Line for -gnat95 switch
 
       Write_Switch_Char ("95");
-
-      if Ada_Version_Default = Ada_95 then
-         Write_Line ("Ada 95 mode (default)");
-      else
-         Write_Line ("Ada 95 mode");
-      end if;
+      Write_Line ("Ada 95 mode");
 
       --  Line for -gnat2005 switch
 
       Write_Switch_Char ("2005");
-
-      if Ada_Version_Default = Ada_2005 then
-         Write_Line ("Ada 2005 mode (default)");
-      else
-         Write_Line ("Ada 2005 mode");
-      end if;
+      Write_Line ("Ada 2005 mode");
    end if;
 
    --  Line for -gnat2012 switch
@@ -722,6 +734,16 @@ begin
       Write_Line ("Ada 2012 mode (default)");
    else
       Write_Line ("Ada 2012 mode");
+   end if;
+
+   --  Line for -gnat2022 switch
+
+   Write_Switch_Char ("2022");
+
+   if Ada_Version_Default = Ada_2022 then
+      Write_Line ("Ada 2022 mode (default)");
+   else
+      Write_Line ("Ada 2022 mode");
    end if;
 
    --  Line for -gnat-p switch

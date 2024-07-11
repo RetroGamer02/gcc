@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler.  
    Vitesse IQ2000 processors
-   Copyright (C) 2003-2021 Free Software Foundation, Inc.
+   Copyright (C) 2003-2024 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -112,9 +112,6 @@
 #define LONG_TYPE_SIZE 		32
 #define LONG_LONG_TYPE_SIZE 	64
 #define CHAR_TYPE_SIZE		BITS_PER_UNIT
-#define FLOAT_TYPE_SIZE 	32
-#define DOUBLE_TYPE_SIZE 	64
-#define LONG_DOUBLE_TYPE_SIZE	64
 #define DEFAULT_SIGNED_CHAR	1
 
 #undef  SIZE_TYPE
@@ -525,7 +522,7 @@ while (0)
 
 #define FUNCTION_MODE SImode
 
-/* IQ2000 external variables defined in iq2000.c.  */
+/* IQ2000 external variables defined in iq2000.cc.  */
 
 /* Comparison type.  */
 enum cmp_type

@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Free Software Foundation, Inc.
+// Copyright (C) 2021-2024 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -16,8 +16,16 @@
 // <http://www.gnu.org/licenses/>.
 
 // { dg-do run { target c++20 } }
+// { dg-add-options no_pch }
 
 #include <unordered_set>
+
+#ifndef __cpp_lib_generic_unordered_lookup
+# error "Feature-test macro for generic lookup missing in <unordered_set>"
+#elif __cpp_lib_generic_unordered_lookup < 201811L
+# error "Feature-test macro for generic lookup has wrong value in <unordered_set>"
+#endif
+
 #include <testsuite_hooks.h>
 
 struct Equal

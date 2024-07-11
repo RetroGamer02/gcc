@@ -16,14 +16,14 @@
 
 #if SANITIZER_FUCHSIA
 #include "sanitizer_symbolizer_fuchsia.h"
-#elif SANITIZER_RTEMS
-#include "sanitizer_symbolizer_rtems.h"
-#endif
-#include "sanitizer_stacktrace.h"
-#include "sanitizer_symbolizer.h"
+#  endif
 
-#include <limits.h>
-#include <unwind.h>
+#  include <limits.h>
+#  include <unwind.h>
+
+#  include "sanitizer_stacktrace.h"
+#  include "sanitizer_stacktrace_printer.h"
+#  include "sanitizer_symbolizer.h"
 
 namespace __sanitizer {
 
@@ -54,6 +54,10 @@ bool Symbolizer::GetModuleNameAndOffsetForPC(uptr pc, const char **module_name,
   return false;
 }
 
+// This is mainly used by hwasan for online symbolization. This isn't needed
+// since hwasan can always just dump stack frames for offline symbolization.
+bool Symbolizer::SymbolizeFrame(uptr addr, FrameInfo *info) { return false; }
+
 // This is used in some places for suppression checking, which we
 // don't really support for Fuchsia.  It's also used in UBSan to
 // identify a PC location to a function name, so we always fill in
@@ -78,28 +82,33 @@ bool Symbolizer::SymbolizeData(uptr addr, DataInfo *info) {
 }
 
 // We ignore the format argument to __sanitizer_symbolize_global.
-void RenderData(InternalScopedString *buffer, const char *format,
-                const DataInfo *DI, const char *strip_path_prefix) {
-  buffer->append(kFormatData, DI->start);
+void FormattedStackTracePrinter::RenderData(InternalScopedString *buffer,
+                                            const char *format,
+                                            const DataInfo *DI,
+                                            const char *strip_path_prefix) {
+  buffer->AppendF(kFormatData, DI->start);
 }
 
-bool RenderNeedsSymbolization(const char *format) { return false; }
+bool FormattedStackTracePrinter::RenderNeedsSymbolization(const char *format) {
+  return false;
+}
 
 // We don't support the stack_trace_format flag at all.
-void RenderFrame(InternalScopedString *buffer, const char *format, int frame_no,
-                 uptr address, const AddressInfo *info, bool vs_style,
-                 const char *strip_path_prefix, const char *strip_func_prefix) {
+void FormattedStackTracePrinter::RenderFrame(InternalScopedString *buffer,
+                                             const char *format, int frame_no,
+                                             uptr address,
+                                             const AddressInfo *info,
+                                             bool vs_style,
+                                             const char *strip_path_prefix) {
   CHECK(!RenderNeedsSymbolization(format));
-  buffer->append(kFormatFrame, frame_no, address);
+  buffer->AppendF(kFormatFrame, frame_no, address);
 }
 
 Symbolizer *Symbolizer::PlatformInit() {
   return new (symbolizer_allocator_) Symbolizer({});
 }
 
-void Symbolizer::LateInitialize() {
-  Symbolizer::GetOrInit()->LateInitializeTools();
-}
+void Symbolizer::LateInitialize() { Symbolizer::GetOrInit(); }
 
 void StartReportDeadlySignal() {}
 void ReportDeadlySignal(const SignalContext &sig, u32 tid,

@@ -4,11 +4,10 @@
  * Translated from MinGW Windows headers
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_subauth.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_subauth.d)
  */
 module core.sys.windows.subauth;
 version (Windows):
-@system:
 
 import core.sys.windows.ntdef, core.sys.windows.windef;
 
@@ -107,7 +106,7 @@ struct STRING {
 alias STRING* PSTRING;
 +/
 
-mixin DECLARE_HANDLE!("SAM_HANDLE");
+alias SAM_HANDLE = HANDLE;
 alias SAM_HANDLE* PSAM_HANDLE;
 
 struct OLD_LARGE_INTEGER {

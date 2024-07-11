@@ -1,6 +1,6 @@
 // PR c++/87765
 // { dg-do compile { target c++17 } }
-// { dg-ice "cxx_eval_constant_expression" }
+// { dg-additional-options "-fchecking" }
 
 template <int N>
 using foo = int;

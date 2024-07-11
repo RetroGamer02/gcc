@@ -433,7 +433,7 @@ Ada Tasks
 
 .. index:: Breakpoints and tasks
 
-* ``break``*linespec* ``task`` *taskid*, ``break`` *linespec* ``task`` *taskid* ``if`` ...
+* ``break`` *linespec* ``task`` *taskid*, ``break`` *linespec* ``task`` *taskid* ``if`` ...
 
     These commands are like the ``break ... thread ...``.
     *linespec* specifies source lines.
@@ -756,12 +756,14 @@ for a complete list of supported platforms.
 .. rubric:: Tracebacks From an Unhandled Exception
 
 A runtime non-symbolic traceback is a list of addresses of call instructions.
-To enable this feature you must use the :switch:`-E`
-``gnatbind`` option. With this option a stack traceback is stored as part
-of exception information. You can retrieve this information using the
-``addr2line`` tool.
+To enable this feature you must use the :switch:`-E` ``gnatbind`` option. With
+this option a stack traceback is stored as part of exception information.
 
-Here is a simple example:
+You can translate this information using the ``addr2line`` tool, provided that
+the program is compiled with debugging options (see :ref:`Switches_for_gcc`)
+and linked at a fixed position with :switch:`-no-pie`.
+
+Here is a simple example with ``gnatmake``:
 
   .. code-block:: ada
 
@@ -783,94 +785,112 @@ Here is a simple example:
 
   ::
 
-     $ gnatmake stb -bargs -E
+     $ gnatmake stb -g -bargs -E -largs -no-pie
      $ stb
 
-     Execution terminated by unhandled exception
-     Exception name: CONSTRAINT_ERROR
-     Message: stb.adb:5
+     Execution of stb terminated by unhandled exception
+     raised CONSTRAINT_ERROR : stb.adb:5 explicit raise
+     Load address: 0x400000
      Call stack traceback locations:
      0x401373 0x40138b 0x40139c 0x401335 0x4011c4 0x4011f1 0x77e892a4
 
 As we see the traceback lists a sequence of addresses for the unhandled
 exception ``CONSTRAINT_ERROR`` raised in procedure P1. It is easy to
 guess that this exception come from procedure P1. To translate these
-addresses into the source lines where the calls appear, the
-``addr2line`` tool, described below, is invaluable. The use of this tool
-requires the program to be compiled with debug information.
+addresses into the source lines where the calls appear, the ``addr2line``
+tool needs to be invoked like this:
 
   ::
 
-     $ gnatmake -g stb -bargs -E
-     $ stb
-
-     Execution terminated by unhandled exception
-     Exception name: CONSTRAINT_ERROR
-     Message: stb.adb:5
-     Call stack traceback locations:
-     0x401373 0x40138b 0x40139c 0x401335 0x4011c4 0x4011f1 0x77e892a4
-
-     $ addr2line --exe=stb 0x401373 0x40138b 0x40139c 0x401335 0x4011c4
+     $ addr2line -e stb 0x401373 0x40138b 0x40139c 0x401335 0x4011c4
         0x4011f1 0x77e892a4
 
-     00401373 at d:/stb/stb.adb:5
-     0040138B at d:/stb/stb.adb:10
-     0040139C at d:/stb/stb.adb:14
-     00401335 at d:/stb/b~stb.adb:104
-     004011C4 at /build/.../crt1.c:200
-     004011F1 at /build/.../crt1.c:222
-     77E892A4 in ?? at ??:0
+     d:/stb/stb.adb:5
+     d:/stb/stb.adb:10
+     d:/stb/stb.adb:14
+     d:/stb/b~stb.adb:197
+     crtexe.c:?
+     crtexe.c:?
+     ??:0
 
 The ``addr2line`` tool has several other useful options:
 
-  ======================== ========================================================
-  :samp:`--functions`      to get the function name corresponding to any location
-  :samp:`--demangle=gnat`  to use the gnat decoding mode for the function names.
-                           Note that for binutils version 2.9.x the option is
-                           simply :samp:`--demangle`.
-  ======================== ========================================================
+  =========================  ====================================================
+  :samp:`-a --addresses`     to show the addresses alongside the line numbers
+  :samp:`-f --functions`     to get the function name corresponding to a location
+  :samp:`-p --pretty-print`  to print all the information on a single line
+  :samp:`--demangle=gnat`    to use the GNAT decoding mode for the function names
+  =========================  ====================================================
 
   ::
 
-     $ addr2line --exe=stb --functions --demangle=gnat 0x401373 0x40138b
-        0x40139c 0x401335 0x4011c4 0x4011f1
+     $ addr2line -e stb -a -f -p --demangle=gnat 0x401373 0x40138b
+        0x40139c 0x401335 0x4011c4 0x4011f1 0x77e892a4
 
-     00401373 in stb.p1 at d:/stb/stb.adb:5
-     0040138B in stb.p2 at d:/stb/stb.adb:10
-     0040139C in stb at d:/stb/stb.adb:14
-     00401335 in main at d:/stb/b~stb.adb:104
-     004011C4 in <__mingw_CRTStartup> at /build/.../crt1.c:200
-     004011F1 in <mainCRTStartup> at /build/.../crt1.c:222
+     0x00401373: stb.p1 at d:/stb/stb.adb:5
+     0x0040138B: stb.p2 at d:/stb/stb.adb:10
+     0x0040139C: stb at d:/stb/stb.adb:14
+     0x00401335: main at d:/stb/b~stb.adb:197
+     0x004011c4: ?? at crtexe.c:?
+     0x004011f1: ?? at crtexe.c:?
+     0x77e892a4: ?? ??:0
 
-From this traceback we can see that the exception was raised in
-:file:`stb.adb` at line 5, which was reached from a procedure call in
-:file:`stb.adb` at line 10, and so on. The :file:`b~std.adb` is the binder file,
-which contains the call to the main program.
-:ref:`Running_gnatbind`. The remaining entries are assorted runtime routines,
-and the output will vary from platform to platform.
+
+From this traceback we can see that the exception was raised in :file:`stb.adb`
+at line 5, which was reached from a procedure call in :file:`stb.adb` at line
+10, and so on. The :file:`b~std.adb` is the binder file, which contains the
+call to the main program. :ref:`Running_gnatbind`. The remaining entries are
+assorted runtime routines and the output will vary from platform to platform.
 
 It is also possible to use ``GDB`` with these traceback addresses to debug
 the program. For example, we can break at a given code location, as reported
-in the stack traceback:
-
-  ::
+in the stack traceback::
 
      $ gdb -nw stb
-
-Furthermore, this feature is not implemented inside Windows DLL. Only
-the non-symbolic traceback is reported in this case.
-
-  ::
 
      (gdb) break *0x401373
      Breakpoint 1 at 0x401373: file stb.adb, line 5.
 
-It is important to note that the stack traceback addresses
-do not change when debug information is included. This is particularly useful
-because it makes it possible to release software without debug information (to
-minimize object size), get a field report that includes a stack traceback
-whenever an internal bug occurs, and then be able to retrieve the sequence
-of calls with the same program compiled with debug information.
+It is important to note that the stack traceback addresses do not change when
+debug information is included. This is particularly useful because it makes it
+possible to release software without debug information (to minimize object
+size), get a field report that includes a stack traceback whenever an internal
+bug occurs, and then be able to retrieve the sequence of calls with the same
+program compiled with debug information.
+
+However the ``addr2line`` tool does not work with Position-Independent Code
+(PIC), the historical example being Linux dynamic libraries and Windows DLLs,
+which nowadays encompasse Position-Independent Executables (PIE) on recent
+Linux and Windows versions.
+
+In order to translate addresses the source lines with Position-Independent
+Executables on recent Linux and Windows versions, in other words without
+using the switch :switch:`-no-pie` during linking, you need to use the
+``gnatsymbolize`` tool with :switch:`--load` instead of the ``addr2line``
+tool. The main difference is that you need to copy the Load Address output
+in the traceback ahead of the sequence of addresses. And the default mode
+of ``gnatsymbolize`` is equivalent to that of ``addr2line`` with the above
+switches, so none of them is needed::
+
+     $ gnatmake stb -g -bargs -E
+     $ stb
+
+     Execution of stb terminated by unhandled exception
+     raised CONSTRAINT_ERROR : stb.adb:5 explicit raise
+     Load address: 0x400000
+     Call stack traceback locations:
+     0x401373 0x40138b 0x40139c 0x401335 0x4011c4 0x4011f1 0x77e892a4
+
+     $ gnatsymbolize --load stb 0x400000 0x401373 0x40138b 0x40139c 0x401335 \
+        0x4011c4 0x4011f1 0x77e892a4
+
+     0x00401373 Stb.P1 at stb.adb:5
+     0x0040138B Stb.P2 at stb.adb:10
+     0x0040139C Stb at stb.adb:14
+     0x00401335 Main at b~stb.adb:197
+     0x004011c4 __tmainCRTStartup at ???
+     0x004011f1 mainCRTStartup at ???
+     0x77e892a4 ??? at ???
 
 
 .. rubric:: Tracebacks From Exception Occurrences
@@ -908,31 +928,29 @@ Ada facilities defined in ``Ada.Exceptions``. Here is a simple example:
          P2;
       end STB;
 
-This program will output:
-
   ::
 
+     $ gnatmake stb -g -bargs -E -largs -no-pie
      $ stb
 
-     Exception name: CONSTRAINT_ERROR
-     Message: stb.adb:12
+     raised CONSTRAINT_ERROR : stb.adb:12 range check failed
+     Load address: 0x400000
      Call stack traceback locations:
      0x4015e4 0x401633 0x401644 0x401461 0x4011c4 0x4011f1 0x77e892a4
 
 
 .. rubric:: Tracebacks From Anywhere in a Program
 
-It is also possible to retrieve a stack traceback from anywhere in a
-program. For this you need to
-use the ``GNAT.Traceback`` API. This package includes a procedure called
-``Call_Chain`` that computes a complete stack traceback, as well as useful
-display procedures described below. It is not necessary to use the
-:switch:`-E` ``gnatbind`` option in this case, because the stack traceback mechanism
-is invoked explicitly.
+It is also possible to retrieve a stack traceback from anywhere in a program.
+For this you need to use the ``GNAT.Traceback`` API. This package includes a
+procedure called ``Call_Chain`` that computes a complete stack traceback, as
+well as useful display procedures described below. It is not necessary to use
+the :switch:`-E` ``gnatbind`` option in this case, because the stack traceback
+mechanism is invoked explicitly.
 
-In the following example we compute a traceback at a specific location in
-the program, and we display it using ``GNAT.Debug_Utilities.Image`` to
-convert addresses to strings:
+In the following example we compute a traceback at a specific location in the
+program, and we display it using ``GNAT.Debug_Utilities.Image`` to convert
+addresses to strings:
 
 
   .. code-block:: ada
@@ -940,12 +958,17 @@ convert addresses to strings:
       with Ada.Text_IO;
       with GNAT.Traceback;
       with GNAT.Debug_Utilities;
+      with System;
 
       procedure STB is
 
          use Ada;
+         use Ada.Text_IO;
          use GNAT;
          use GNAT.Traceback;
+         use System;
+
+         LA : constant Address := Executable_Load_Address;
 
          procedure P1 is
             TB  : Tracebacks_Array (1 .. 10);
@@ -955,14 +978,14 @@ convert addresses to strings:
          begin
             Call_Chain (TB, Len);
 
-            Text_IO.Put ("In STB.P1 : ");
+            Put ("In STB.P1 : ");
 
             for K in 1 .. Len loop
-               Text_IO.Put (Debug_Utilities.Image (TB (K)));
-               Text_IO.Put (' ');
+               Put (Debug_Utilities.Image_C (TB (K)));
+               Put (' ');
             end loop;
 
-            Text_IO.New_Line;
+            New_Line;
          end P1;
 
          procedure P2 is
@@ -971,21 +994,26 @@ convert addresses to strings:
          end P2;
 
       begin
+         if LA /= Null_Address then
+            Put_Line ("Load address: " & Debug_Utilities.Image_C (LA));
+         end if;
+
          P2;
       end STB;
 
   ::
 
-     $ gnatmake -g stb
+     $ gnatmake stb -g
      $ stb
 
-     In STB.P1 : 16#0040_F1E4# 16#0040_14F2# 16#0040_170B# 16#0040_171C#
-     16#0040_1461# 16#0040_11C4# 16#0040_11F1# 16#77E8_92A4#
+     Load address: 0x400000
+     In STB.P1 : 0x40F1E4 0x4014F2 0x40170B 0x40171C 0x401461 0x4011C4 \
+       0x4011F1 0x77E892A4
 
 
-You can then get further information by invoking the ``addr2line``
-tool as described earlier (note that the hexadecimal addresses
-need to be specified in C format, with a leading '0x').
+You can then get further information by invoking the ``addr2line`` tool or
+the ``gnatsymbolize`` tool as described earlier (note that the hexadecimal
+addresses need to be specified in C format, with a leading '0x').
 
 .. index:: traceback, symbolic
 
@@ -1041,7 +1069,7 @@ Here is an example:
 
   ::
 
-      $ gnatmake -g .\stb -bargs -E
+      $ gnatmake -g stb -bargs -E
       $ stb
 
       0040149F in stb.p1 at stb.adb:8
@@ -1052,16 +1080,6 @@ Here is an example:
       004011C4 in __mingw_CRTStartup at crt1.c:200
       004011F1 in mainCRTStartup at crt1.c:222
       77E892A4 in ?? at ??:0
-
-In the above example the ``.\`` syntax in the ``gnatmake`` command
-is currently required by ``addr2line`` for files that are in
-the current working directory.
-Moreover, the exact sequence of linker options may vary from platform
-to platform.
-The above :switch:`-largs` section is for Windows platforms. By contrast,
-under Unix there is no need for the :switch:`-largs` section.
-Differences across platforms are due to details of linker implementation.
-
 
 .. rubric:: Tracebacks From Anywhere in a Program
 
@@ -1235,8 +1253,8 @@ most often, and are therefore the most time-consuming.
 better handle Ada programs and multitasking.
 It is currently supported on the following platforms
 
-* linux x86/x86_64
-* windows x86
+* Linux x86/x86_64
+* Windows x86/x86_64 (without PIE support)
 
 In order to profile a program using ``gprof``, several steps are needed:
 
@@ -1274,6 +1292,10 @@ Note that only the objects that were compiled with the ``-pg`` switch will
 be profiled; if you need to profile your whole project, use the ``-f``
 gnatmake switch to force full recompilation.
 
+Note that on Windows, gprof does not support PIE. The ``-no-pie`` switch
+should be added to the linker flags to disable this feature.
+
+
 .. _Program_execution:
 
 
@@ -1306,7 +1328,7 @@ or simply:
 
   ::
 
-    $  gprof my_prog
+    $ gprof my_prog
 
 The complete form of the gprof command line is the following:
 
@@ -1494,7 +1516,7 @@ Use of Restrictions
 The use of pragma Restrictions allows you to control which features are
 permitted in your program. Apart from the obvious point that if you avoid
 relatively expensive features like finalization (enforceable by the use
-of pragma Restrictions (No_Finalization), the use of this pragma does not
+of pragma Restrictions (No_Finalization)), the use of this pragma does not
 affect the generated code in most cases.
 
 One notable exception to this rule is that the possibility of task abort
@@ -2050,37 +2072,36 @@ the following example:
 
   .. code-block:: ada
 
-     procedure R is
+     procedure M is
         type Int1 is new Integer;
+        I1 : Int1;
+
         type Int2 is new Integer;
-        type Int1A is access Int1;
-        type Int2A is access Int2;
-        Int1V : Int1A;
-        Int2V : Int2A;
+        type A2 is access Int2;
+        V2 : A2;
         ...
 
      begin
         ...
         for J in Data'Range loop
-           if Data (J) = Int1V.all then
-              Int2V.all := Int2V.all + 1;
+           if Data (J) = I1 then
+              V2.all := V2.all + 1;
            end if;
         end loop;
         ...
-     end R;
+     end;
 
-In this example, since the variable ``Int1V`` can only access objects
-of type ``Int1``, and ``Int2V`` can only access objects of type
-``Int2``, there is no possibility that the assignment to
-``Int2V.all`` affects the value of ``Int1V.all``. This means that
-the compiler optimizer can "know" that the value ``Int1V.all`` is constant
-for all iterations of the loop and avoid the extra memory reference
-required to dereference it each time through the loop.
+In this example, since ``V2`` can only access objects of type ``Int2``
+and ``I1`` is not one of them, there is no possibility that the assignment
+to ``V2.all`` affects the value of ``I1``. This means that the compiler
+optimizer can infer that the value ``I1`` is constant for all iterations
+of the loop and load it from memory only once, before entering the loop,
+instead of in every iteration (this is called load hoisting).
 
-This kind of optimization, called strict aliasing analysis, is
+This kind of optimizations, based on strict type-based aliasing, is
 triggered by specifying an optimization level of :switch:`-O2` or
-higher or :switch:`-Os` and allows GNAT to generate more efficient code
-when access values are involved.
+higher (or :switch:`-Os`) and allows the compiler to generate more
+efficient code.
 
 However, although this optimization is always correct in terms of
 the formal semantics of the Ada Reference Manual, difficulties can
@@ -2089,173 +2110,214 @@ the typing system. Consider the following complete program example:
 
   .. code-block:: ada
 
-      package p1 is
-         type int1 is new integer;
-         type int2 is new integer;
-         type a1 is access int1;
-         type a2 is access int2;
-      end p1;
+      package P1 is
+         type Int1 is new Integer;
+         type A1 is access Int1;
 
-      with p1; use p1;
-      package p2 is
-         function to_a2 (Input : a1) return a2;
+         type Int2 is new Integer;
+         type A2 is access Int2;
+      end P1;
+
+      with P1; use P1;
+      package P2 is
+         function To_A2 (Input : A1) return A2;
       end p2;
 
-      with Unchecked_Conversion;
-      package body p2 is
-         function to_a2 (Input : a1) return a2 is
-            function to_a2u is
-              new Unchecked_Conversion (a1, a2);
+      with Ada.Unchecked_Conversion;
+      package body P2 is
+         function To_A2 (Input : A1) return A2 is
+            function Conv is
+              new Ada.Unchecked_Conversion (A1, A2);
          begin
-            return to_a2u (Input);
-         end to_a2;
-      end p2;
+            return Conv (Input);
+         end To_A2;
+      end P2;
 
-      with p2; use p2;
-      with p1; use p1;
+      with P1; use P1;
+      with P2; use P2;
       with Text_IO; use Text_IO;
-      procedure m is
-         v1 : a1 := new int1;
-         v2 : a2 := to_a2 (v1);
+      procedure M is
+         V1 : A1 := new Int1;
+         V2 : A2 := To_A2 (V1);
       begin
-         v1.all := 1;
-         v2.all := 0;
-         put_line (int1'image (v1.all));
+         V1.all := 1;
+         V2.all := 0;
+         Put_Line (Int1'Image (V1.all));
       end;
 
-This program prints out 0 in :switch:`-O0` or :switch:`-O1`
-mode, but it prints out 1 in :switch:`-O2` mode. That's
-because in strict aliasing mode, the compiler can and
-does assume that the assignment to ``v2.all`` could not
-affect the value of ``v1.all``, since different types
-are involved.
+This program prints out ``0`` in :switch:`-O0` or :switch:`-O1` modes,
+but it prints out ``1`` in :switch:`-O2` mode. That's because in strict
+aliasing mode, the compiler may and does assume that the assignment to
+``V2.all`` could not affect the value of ``V1.all``, since different
+types are involved.
 
 This behavior is not a case of non-conformance with the standard, since
 the Ada RM specifies that an unchecked conversion where the resulting
 bit pattern is not a correct value of the target type can result in an
 abnormal value and attempting to reference an abnormal value makes the
 execution of a program erroneous.  That's the case here since the result
-does not point to an object of type ``int2``.  This means that the
-effect is entirely unpredictable.
+does not point to an object of type ``Int2``.  This means that the effect
+is entirely unpredictable.
 
-However, although that explanation may satisfy a language
-lawyer, in practice an applications programmer expects an
-unchecked conversion involving pointers to create true
-aliases and the behavior of printing 1 seems plain wrong.
-In this case, the strict aliasing optimization is unwelcome.
+However, although that explanation may satisfy a language lawyer, in
+practice an application programmer expects an unchecked conversion
+involving pointers to create true aliases and the behavior of printing
+``1`` is questionable. In this case, the strict type-based aliasing
+optimizations are clearly unwelcome.
 
-Indeed the compiler recognizes this possibility, and the
-unchecked conversion generates a warning:
+Indeed the compiler recognizes this possibility and the instantiation of
+Unchecked_Conversion generates a warning:
 
   ::
 
-     p2.adb:5:07: warning: possible aliasing problem with type "a2"
+     p2.adb:5:07: warning: possible aliasing problem with type "A2"
      p2.adb:5:07: warning: use -fno-strict-aliasing switch for references
-     p2.adb:5:07: warning:  or use "pragma No_Strict_Aliasing (a2);"
+     p2.adb:5:07: warning:  or use "pragma No_Strict_Aliasing (A2);"
 
-Unfortunately the problem is recognized when compiling the body of
-package ``p2``, but the actual "bad" code is generated while
-compiling the body of ``m`` and this latter compilation does not see
-the suspicious ``Unchecked_Conversion``.
+Unfortunately the problem is only recognized when compiling the body of
+package ``P2``, but the actual problematic code is generated while
+compiling the body of ``M`` and this latter compilation does not see
+the suspicious instance of ``Unchecked_Conversion``.
 
 As implied by the warning message, there are approaches you can use to
-avoid the unwanted strict aliasing optimization in a case like this.
+avoid the unwanted strict aliasing optimizations in a case like this.
 
 One possibility is to simply avoid the use of :switch:`-O2`, but
-that is a bit drastic, since it throws away a number of useful
+that is quite drastic, since it throws away a number of useful
 optimizations that do not involve strict aliasing assumptions.
 
 A less drastic approach is to compile the program using the
 option :switch:`-fno-strict-aliasing`. Actually it is only the
 unit containing the dereferencing of the suspicious pointer
 that needs to be compiled. So in this case, if we compile
-unit ``m`` with this switch, then we get the expected
+unit ``M`` with this switch, then we get the expected
 value of zero printed. Analyzing which units might need
 the switch can be painful, so a more reasonable approach
 is to compile the entire program with options :switch:`-O2`
 and :switch:`-fno-strict-aliasing`. If the performance is
 satisfactory with this combination of options, then the
-advantage is that the entire issue of possible "wrong"
-optimization due to strict aliasing is avoided.
+advantage is that the entire issue of possible problematic
+optimizations due to strict aliasing is avoided.
 
 To avoid the use of compiler switches, the configuration
 pragma ``No_Strict_Aliasing`` with no parameters may be
 used to specify that for all access types, the strict
-aliasing optimization should be suppressed.
+aliasing optimizations should be suppressed.
 
-However, these approaches are still overkill, in that they causes
+However, these approaches are still overkill, in that they cause
 all manipulations of all access values to be deoptimized. A more
 refined approach is to concentrate attention on the specific
 access type identified as problematic.
 
-First, if a careful analysis of uses of the pointer shows
-that there are no possible problematic references, then
-the warning can be suppressed by bracketing the
-instantiation of ``Unchecked_Conversion`` to turn
-the warning off:
-
-  .. code-block:: ada
-
-     pragma Warnings (Off);
-     function to_a2u is
-       new Unchecked_Conversion (a1, a2);
-     pragma Warnings (On);
-
-Of course that approach is not appropriate for this particular
-example, since indeed there is a problematic reference. In this
-case we can take one of two other approaches.
-
 The first possibility is to move the instantiation of unchecked
-conversion to the unit in which the type is declared. In
-this example, we would move the instantiation of
-``Unchecked_Conversion`` from the body of package
-``p2`` to the spec of package ``p1``. Now the
-warning disappears. That's because any use of the
-access type knows there is a suspicious unchecked
-conversion, and the strict aliasing optimization
-is automatically suppressed for the type.
+conversion to the unit in which the type is declared. In this
+example, we would move the instantiation of ``Unchecked_Conversion``
+from the body of package ``P2`` to the spec of package ``P1``.
+Now the warning disappears because any use of the access type
+knows there is a suspicious unchecked conversion, and the strict
+aliasing optimizations are automatically suppressed for it.
 
 If it is not practical to move the unchecked conversion to the same unit
 in which the destination access type is declared (perhaps because the
-source type is not visible in that unit), you may use pragma
-``No_Strict_Aliasing`` for the type. This pragma must occur in the
-same declarative sequence as the declaration of the access type:
+source type is not visible in that unit), the second possibiliy is to
+use pragma ``No_Strict_Aliasing`` for the type. This pragma must occur
+in the same declarative part as the declaration of the access type:
 
   .. code-block:: ada
 
-     type a2 is access int2;
-     pragma No_Strict_Aliasing (a2);
+     type A2 is access Int2;
+     pragma No_Strict_Aliasing (A2);
 
-Here again, the compiler now knows that the strict aliasing optimization
-should be suppressed for any reference to type ``a2`` and the
-expected behavior is obtained.
+Here again, the compiler now knows that strict aliasing optimizations
+should be suppressed for any dereference made through type ``A2`` and
+the expected behavior is obtained.
 
-Finally, note that although the compiler can generate warnings for
-simple cases of unchecked conversions, there are tricker and more
-indirect ways of creating type incorrect aliases which the compiler
-cannot detect. Examples are the use of address overlays and unchecked
-conversions involving composite types containing access types as
-components. In such cases, no warnings are generated, but there can
-still be aliasing problems. One safe coding practice is to forbid the
-use of address clauses for type overlaying, and to allow unchecked
-conversion only for primitive types. This is not really a significant
-restriction since any possible desired effect can be achieved by
-unchecked conversion of access values.
+The third possibility is to declare that one of the designated types
+involved, namely ``Int1`` or ``Int2``, is allowed to alias any other
+type in the universe, by using pragma ``Universal_Aliasing``:
 
-The aliasing analysis done in strict aliasing mode can certainly
-have significant benefits. We have seen cases of large scale
-application code where the time is increased by up to 5% by turning
-this optimization off. If you have code that includes significant
-usage of unchecked conversion, you might want to just stick with
-:switch:`-O1` and avoid the entire issue. If you get adequate
-performance at this level of optimization level, that's probably
-the safest approach. If tests show that you really need higher
-levels of optimization, then you can experiment with :switch:`-O2`
-and :switch:`-O2 -fno-strict-aliasing` to see how much effect this
+  .. code-block:: ada
+
+     type Int2 is new Integer;
+     pragma Universal_Aliasing (Int2);
+
+The effect is equivalent to applying pragma ``No_Strict_Aliasing`` to
+every access type designating ``Int2``, in particular ``A2``, and more
+generally to every reference made to an object of declared type ``Int2``,
+so it is very powerful and effectively takes ``Int2`` out of the alias
+analysis performed by the compiler in all circumstances.
+
+This pragma can also be used to deal with aliasing issues that arise
+again from the use of ``Unchecked_Conversion`` in the source code but
+without the presence of access types. The typical example is code
+that streams data by means of arrays of storage units (bytes):
+
+ .. code-block:: ada
+
+    type Byte is mod 2**System.Storage_Unit;
+    for Byte'Size use System.Storage_Unit;
+
+    type Chunk_Of_Bytes is array (1 .. 64) of Byte;
+
+    procedure Send (S : Chunk_Of_Bytes);
+
+    type Rec is record
+       ...
+    end record;
+
+    procedure Dump (R : Rec) is
+       function To_Stream is
+          new Ada.Unchecked_Conversion (Rec, Chunk_Of_Bytes);
+    begin
+       Send (To_Stream (R));
+    end;
+
+This generates the following warning for the call to ``Send``:
+
+  ::
+
+     dump.adb:8:25: warning: unchecked conversion implemented by copy
+     dump.adb:8:25: warning: use pragma Universal_Aliasing on either type
+     dump.adb:8:25: warning: to enable RM 13.9(12) implementation permission
+
+This occurs because the formal parameter ``S`` of ``Send`` is passed by
+reference by the compiler and it is not possible to pass a reference to
+``R`` directly in the call without violating strict type-based aliasing.
+That's why the compiler generates a temporary of type ``Chunk_Of_Bytes``
+just before the call and passes a reference to this temporary instead.
+
+As implied by the warning message, it is possible to avoid the temporary
+(and the warning) by means of pragma ``Universal_Aliasing``:
+
+ .. code-block:: ada
+
+    type Chunk_Of_Bytes is array (1 .. 64) of Byte;
+    pragma Universal_Aliasing (Chunk_Of_Bytes);
+
+The pragma can also be applied to the component type instead:
+
+ .. code-block:: ada
+
+    type Byte is mod 2**System.Storage_Unit;
+    for Byte'Size use System.Storage_Unit;
+    pragma Universal_Aliasing (Byte);
+
+and every array type whose component is ``Byte`` will inherit the pragma.
+
+To sum up, the alias analysis performed in strict aliasing mode by the
+compiler can have significant benefits. We have seen cases of large scale
+application code where the execution time is increased by up to 5% when
+these optimizations are turned off. However, if you have code that make
+significant use of unchecked conversion, you might want to just stick
+with :switch:`-O1` and avoid the entire issue. If you get adequate
+performance at this level of optimization, that's probably the safest
+approach. If tests show that you really need higher levels of
+optimization, then you can experiment with :switch:`-O2` and
+:switch:`-O2 -fno-strict-aliasing` to see how much effect this
 has on size and speed of the code. If you really need to use
 :switch:`-O2` with strict aliasing in effect, then you should
-review any uses of unchecked conversion of access types,
-particularly if you are getting the warnings described above.
+review any uses of unchecked conversion, particularly if you are
+getting the warnings described above.
 
 
 .. _Aliased_Variables_and_Optimization:
@@ -2304,7 +2366,7 @@ erroneous, and the compiler would be entitled to assume that
 
 However, in practice, this would cause some existing code that
 seems to work with no optimization to start failing at high
-levels of optimzization.
+levels of optimization.
 
 What the compiler does for such cases is to assume that marking
 a variable as aliased indicates that some "funny business" may
@@ -2452,7 +2514,7 @@ If ``Text_IO`` must be used, note that by default output to the standard
 output and standard error files is unbuffered (this provides better
 behavior when output statements are used for debugging, or if the
 progress of a program is observed by tracking the output, e.g. by
-using the Unix *tail -f* command to watch redirected output.
+using the Unix *tail -f* command to watch redirected output).
 
 If you are generating large volumes of output with ``Text_IO`` and
 performance is an important factor, use a designated file instead
@@ -2711,7 +2773,7 @@ To deal with the portability issue, and with the problem of
 mathematical versus run-time interpretation of the expressions in
 assertions, GNAT provides comprehensive control over the handling
 of intermediate overflow. GNAT can operate in three modes, and
-furthemore, permits separate selection of operating modes for
+furthermore, permits separate selection of operating modes for
 the expressions within assertions (here the term 'assertions'
 is used in the technical sense, which includes preconditions and so forth)
 and for expressions appearing outside assertions.
@@ -2903,25 +2965,8 @@ The default mode for overflow checks is
 
       General => Strict
 
-which causes all computations both inside and outside assertions to use
-the base type.
-
-This retains compatibility with previous versions of
-GNAT which suppressed overflow checks by default and always
-used the base type for computation of intermediate results.
-
-.. Sphinx allows no emphasis within :index: role. As a workaround we
-   point the index to "switch" and use emphasis for "-gnato".
-
-The :index:`switch <-gnato (gcc)>` :switch:`-gnato` (with no digits following)
-is equivalent to
-
-  ::
-
-      General => Strict
-
-which causes overflow checking of all intermediate overflows
-both inside and outside assertions against the base type.
+which causes all computations both inside and outside assertions to use the
+base type, and is equivalent to :switch:`-gnato` (with no digits following).
 
 The pragma ``Suppress (Overflow_Check)`` disables overflow
 checking, but it has no effect on the method used for computing
@@ -2942,7 +2987,7 @@ reasonably efficient, and can be generally used. It also helps
 to ensure compatibility with code imported from some other
 compiler to GNAT.
 
-Setting all intermediate overflows checking (``CHECKED`` mode)
+Setting all intermediate overflows checking (``STRICT`` mode)
 makes sense if you want to
 make sure that your code is compatible with any other possible
 Ada implementation. This may be useful in ensuring portability
@@ -3289,6 +3334,18 @@ requires ``DV(Source)`` = ``DV(Target)``, and analogously for parameter
 passing (the dimension vector for the actual parameter must be equal to the
 dimension vector for the formal parameter).
 
+When using dimensioned types with elementary functions it is necessary to
+instantiate the ``Ada.Numerics.Generic_Elementary_Functions`` package using
+the ``Mks_Type`` and not any of the derived subtypes such as ``Distance``.
+For functions such as ``Sqrt`` the dimensional analysis will fail when using
+the subtypes because both the parameter and return are of the same type.
+
+An example instantiation
+
+  .. code-block:: ada
+  
+        package Mks_Numerics is new 
+           Ada.Numerics.Generic_Elementary_Functions (System.Dim.Mks.Mks_Type);
 
 .. _Stack_Related_Facilities:
 
@@ -3508,12 +3565,12 @@ leak memory even though it does not perform explicit deallocation:
            for A'Storage_Pool use X;
            v : A;
         begin
-           for I in  1 .. 50 loop
+           for I in 1 .. 50 loop
               v := new Integer;
            end loop;
         end Internal;
      begin
-        for I in  1 .. 100 loop
+        for I in 1 .. 100 loop
            Internal;
         end loop;
      end Pooloc1;
@@ -3590,9 +3647,9 @@ properly allocated memory location. Here is a complete example of use of
 
   .. code-block:: ada
 
-      with Gnat.Io; use Gnat.Io;
-      with Unchecked_Deallocation;
-      with Unchecked_Conversion;
+      with GNAT.IO; use GNAT.IO;
+      with Ada.Unchecked_Deallocation;
+      with Ada.Unchecked_Conversion;
       with GNAT.Debug_Pools;
       with System.Storage_Elements;
       with Ada.Exceptions; use Ada.Exceptions;
@@ -3604,8 +3661,8 @@ properly allocated memory location. Here is a complete example of use of
          P : GNAT.Debug_Pools.Debug_Pool;
          for T'Storage_Pool use P;
 
-         procedure Free is new Unchecked_Deallocation (Integer, T);
-         function UC is new Unchecked_Conversion (U, T);
+         procedure Free is new Ada.Unchecked_Deallocation (Integer, T);
+         function UC is new Ada.Unchecked_Conversion (U, T);
          A, B : aliased T;
 
          procedure Info is new GNAT.Debug_Pools.Print_Info(Put_Line);
@@ -3680,8 +3737,9 @@ execution of this erroneous program:
   The ``gnatmem`` utility monitors dynamic allocation and
   deallocation activity in a program, and displays information about
   incorrect deallocations and possible sources of memory leaks.
-  It is designed to work in association with a static runtime library
-  only and in this context provides three types of information:
+  It is designed to work for fixed-position executables in association
+  with a static runtime library only and in this context provides three
+  types of information:
 
   * General information concerning memory management, such as the total
     number of allocations and deallocations, the amount of allocated
@@ -3711,15 +3769,17 @@ execution of this erroneous program:
 
        $ gnatmem [ switches ] [ DEPTH ] user_program
 
-  The program must have been linked with the instrumented version of the
+  The user program must be linked with the instrumented version of the
   allocation and deallocation routines. This is done by linking with the
   :file:`libgmem.a` library. For correct symbolic backtrace information,
-  the user program should be compiled with debugging options
-  (see :ref:`Switches_for_gcc`). For example to build :file:`my_program`:
+  the user program should also both be compiled with debugging options
+  (see :ref:`Switches_for_gcc`) and be linked at a fixed position with
+  :switch:`-no-pie`. For example to build :file:`my_program` with
+  ``gnatmake``:
 
     ::
 
-       $ gnatmake -g my_program -largs -lgmem
+       $ gnatmake my_program -g -largs -lgmem -no-pie
 
   As library :file:`libgmem.a` contains an alternate body for package
   ``System.Memory``, :file:`s-memory.adb` should not be compiled and linked
@@ -3862,12 +3922,12 @@ execution of this erroneous program:
 
     .. code-block:: ada
 
-       with Unchecked_Deallocation;
+       with Ada.Unchecked_Deallocation;
        procedure Test_Gm is
 
           type T is array (1..1000) of Integer;
           type Ptr is access T;
-          procedure Free is new Unchecked_Deallocation (T, Ptr);
+          procedure Free is new Ada.Unchecked_Deallocation (T, Ptr);
           A : Ptr;
 
           procedure My_Alloc is

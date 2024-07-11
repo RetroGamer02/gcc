@@ -4,10 +4,13 @@
 */
 /* { dg-options "-g" } */
 
+#define INCLUDE_MEMORY
+#define INCLUDE_VECTOR
 #include "gcc-plugin.h"
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "make-unique.h"
 #include "diagnostic.h"
 #include "tree.h"
 #include "gimple.h"
@@ -47,28 +50,21 @@ class gil_state_machine : public state_machine
 public:
   gil_state_machine (logger *logger);
 
-  bool inherited_state_p () const FINAL OVERRIDE { return false; }
+  bool inherited_state_p () const final override { return false; }
 
-  bool on_stmt (sm_context *sm_ctxt,
+  bool on_stmt (sm_context &sm_ctxt,
 		const supernode *node,
-		const gimple *stmt) const FINAL OVERRIDE;
+		const gimple *stmt) const final override;
 
-  void on_condition (sm_context *sm_ctxt,
-		     const supernode *node,
-		     const gimple *stmt,
-		     tree lhs,
-		     enum tree_code op,
-		     tree rhs) const FINAL OVERRIDE;
+  bool can_purge_p (state_t s) const final override;
 
-  bool can_purge_p (state_t s) const FINAL OVERRIDE;
-
-  void check_for_pyobject_usage_without_gil (sm_context *sm_ctxt,
+  void check_for_pyobject_usage_without_gil (sm_context &sm_ctxt,
 					     const supernode *node,
 					     const gimple *stmt,
 					     tree op) const;
 
  private:
-  void check_for_pyobject_in_call (sm_context *sm_ctxt,
+  void check_for_pyobject_in_call (sm_context &sm_ctxt,
 				   const supernode *node,
 				   const gcall *call,
 				   tree callee_fndecl) const;
@@ -88,7 +84,14 @@ public:
 class gil_diagnostic : public pending_diagnostic
 {
 public:
-  location_t fixup_location (location_t loc) const FINAL OVERRIDE
+  /* There isn't a warning ID for us to use.  */
+  int get_controlling_option () const final override
+  {
+    return 0;
+  }
+
+  location_t fixup_location (location_t loc,
+			     bool) const final override
   {
     /* Ideally we'd check for specific macros here, and only
        resolve certain macros.  */
@@ -99,7 +102,7 @@ public:
   }
 
   label_text describe_state_change (const evdesc::state_change &change)
-    FINAL OVERRIDE
+    final override
   {
     if (change.is_global_p ()
 	&& change.m_new_state == m_sm.m_released_gil)
@@ -110,6 +113,21 @@ public:
     return label_text ();
   }
 
+  diagnostic_event::meaning
+  get_meaning_for_state_change (const evdesc::state_change &change)
+    const final override
+  {
+    if (change.is_global_p ())
+      {
+	if (change.m_new_state == m_sm.m_released_gil)
+	  return diagnostic_event::meaning (diagnostic_event::VERB_release,
+					    diagnostic_event::NOUN_lock);
+	else if (change.m_new_state == m_sm.get_start_state ())
+	  return diagnostic_event::meaning (diagnostic_event::VERB_acquire,
+					    diagnostic_event::NOUN_lock);
+      }
+    return diagnostic_event::meaning ();
+  }
  protected:
   gil_diagnostic (const gil_state_machine &sm) : m_sm (sm)
   {
@@ -126,25 +144,24 @@ class double_save_thread : public gil_diagnostic
   : gil_diagnostic (sm), m_call (call)
   {}
 
-  const char *get_kind () const FINAL OVERRIDE
+  const char *get_kind () const final override
   {
     return "double_save_thread";
   }
 
-  bool subclass_equal_p (const pending_diagnostic &base_other) const OVERRIDE
+  bool subclass_equal_p (const pending_diagnostic &base_other) const override
   {
     const double_save_thread &sub_other
       = (const double_save_thread &)base_other;
     return m_call == sub_other.m_call;
   }
 
-  bool emit (rich_location *rich_loc) FINAL OVERRIDE
+  bool emit (diagnostic_emission_context &ctxt) final override
   {
-    return warning_at (rich_loc, 0,
-		       "nested usage of %qs", "Py_BEGIN_ALLOW_THREADS");
+    return ctxt.warn ("nested usage of %qs", "Py_BEGIN_ALLOW_THREADS");
   }
 
-  label_text describe_final_event (const evdesc::final_event &ev) FINAL OVERRIDE
+  label_text describe_final_event (const evdesc::final_event &ev) final override
   {
     return ev.formatted_print ("nested usage of %qs here",
 			       "Py_BEGIN_ALLOW_THREADS");
@@ -163,12 +180,12 @@ class fncall_without_gil : public gil_diagnostic
     m_arg_idx (arg_idx)
   {}
 
-  const char *get_kind () const FINAL OVERRIDE
+  const char *get_kind () const final override
   {
     return "fncall_without_gil";
   }
 
-  bool subclass_equal_p (const pending_diagnostic &base_other) const OVERRIDE
+  bool subclass_equal_p (const pending_diagnostic &base_other) const override
   {
     const fncall_without_gil &sub_other
       = (const fncall_without_gil &)base_other;
@@ -177,23 +194,19 @@ class fncall_without_gil : public gil_diagnostic
 	    && m_arg_idx == sub_other.m_arg_idx);
   }
 
-  bool emit (rich_location *rich_loc) FINAL OVERRIDE
+  bool emit (diagnostic_emission_context &ctxt) final override
   {
-    auto_diagnostic_group d;
-    /* There isn't a warning ID for use to use.  */
     if (m_callee_fndecl)
-      return warning_at (rich_loc, 0,
-			 "use of PyObject as argument %i of %qE"
-			 " without the GIL",
-			 m_arg_idx + 1, m_callee_fndecl);
+      return ctxt.warn ("use of PyObject as argument %i of %qE"
+			" without the GIL",
+			m_arg_idx + 1, m_callee_fndecl);
     else
-      return warning_at (rich_loc, 0,
-			 "use of PyObject as argument %i of call"
-			 " without the GIL",
-			 m_arg_idx + 1, m_callee_fndecl);
+      return ctxt.warn ("use of PyObject as argument %i of call"
+			" without the GIL",
+			m_arg_idx + 1, m_callee_fndecl);
   }
 
-  label_text describe_final_event (const evdesc::final_event &ev) FINAL OVERRIDE
+  label_text describe_final_event (const evdesc::final_event &ev) final override
   {
     if (m_callee_fndecl)
       return ev.formatted_print ("use of PyObject as argument %i of %qE here"
@@ -218,26 +231,23 @@ class pyobject_usage_without_gil : public gil_diagnostic
   : gil_diagnostic (sm), m_expr (expr)
   {}
 
-  const char *get_kind () const FINAL OVERRIDE
+  const char *get_kind () const final override
   {
     return "pyobject_usage_without_gil";
   }
 
-  bool subclass_equal_p (const pending_diagnostic &base_other) const OVERRIDE
+  bool subclass_equal_p (const pending_diagnostic &base_other) const override
   {
     return same_tree_p (m_expr,
 			((const pyobject_usage_without_gil&)base_other).m_expr);
   }
 
-  bool emit (rich_location *rich_loc) FINAL OVERRIDE
+  bool emit (diagnostic_emission_context &ctxt) final override
   {
-    auto_diagnostic_group d;
-    /* There isn't a warning ID for use to use.  */
-    return warning_at (rich_loc, 0,
-		       "use of PyObject %qE without the GIL", m_expr);
+    return ctxt.warn ("use of PyObject %qE without the GIL", m_expr);
   }
 
-  label_text describe_final_event (const evdesc::final_event &ev) FINAL OVERRIDE
+  label_text describe_final_event (const evdesc::final_event &ev) final override
   {
     return ev.formatted_print ("PyObject %qE used here without the GIL",
 			       m_expr);
@@ -258,14 +268,14 @@ gil_state_machine::gil_state_machine (logger *logger)
 
 struct cb_data
 {
-  cb_data (const gil_state_machine &sm, sm_context *sm_ctxt,
+  cb_data (const gil_state_machine &sm, sm_context &sm_ctxt,
 	   const supernode *snode, const gimple *stmt)
   : m_sm (sm), m_sm_ctxt (sm_ctxt), m_snode (snode), m_stmt (stmt)
   {
   }
 
   const gil_state_machine &m_sm;
-  sm_context *m_sm_ctxt;
+  sm_context &m_sm_ctxt;
   const supernode *m_snode;
   const gimple *m_stmt;
 };
@@ -283,7 +293,7 @@ check_for_pyobject (gimple *, tree op, tree, void *data)
    PyObject * arguments passed to CALL.  */
 
 void
-gil_state_machine::check_for_pyobject_in_call (sm_context *sm_ctxt,
+gil_state_machine::check_for_pyobject_in_call (sm_context &sm_ctxt,
 					       const supernode *node,
 					       const gcall *call,
 					       tree callee_fndecl) const
@@ -296,11 +306,11 @@ gil_state_machine::check_for_pyobject_in_call (sm_context *sm_ctxt,
       tree type = TREE_TYPE (TREE_TYPE (arg));
       if (type_based_on_pyobject_p (type))
 	{
-	  sm_ctxt->warn (node, call, NULL_TREE,
-			 new fncall_without_gil (*this, call,
-						 callee_fndecl,
-						 i));
-	  sm_ctxt->set_global_state (m_stop);
+	  sm_ctxt.warn (node, call, NULL_TREE,
+			make_unique<fncall_without_gil> (*this, call,
+							 callee_fndecl,
+							 i));
+	  sm_ctxt.set_global_state (m_stop);
 	}
     }
 }
@@ -308,14 +318,14 @@ gil_state_machine::check_for_pyobject_in_call (sm_context *sm_ctxt,
 /* Implementation of state_machine::on_stmt vfunc for gil_state_machine.  */
 
 bool
-gil_state_machine::on_stmt (sm_context *sm_ctxt,
+gil_state_machine::on_stmt (sm_context &sm_ctxt,
 			    const supernode *node,
 			    const gimple *stmt) const
 {
-  const state_t global_state = sm_ctxt->get_global_state ();
+  const state_t global_state = sm_ctxt.get_global_state ();
   if (const gcall *call = dyn_cast <const gcall *> (stmt))
     {
-      if (tree callee_fndecl = sm_ctxt->get_fndecl_for_call (call))
+      if (tree callee_fndecl = sm_ctxt.get_fndecl_for_call (call))
 	{
 	  if (is_named_call_p (callee_fndecl, "PyEval_SaveThread", call, 0))
 	    {
@@ -324,12 +334,12 @@ gil_state_machine::on_stmt (sm_context *sm_ctxt,
 			"PyEval_SaveThread");
 	      if (global_state == m_released_gil)
 		{
-		  sm_ctxt->warn (node, stmt, NULL_TREE,
-				 new double_save_thread (*this, call));
-		  sm_ctxt->set_global_state (m_stop);
+		  sm_ctxt.warn (node, stmt, NULL_TREE,
+				make_unique<double_save_thread> (*this, call));
+		  sm_ctxt.set_global_state (m_stop);
 		}
 	      else
-		sm_ctxt->set_global_state (m_released_gil);
+		sm_ctxt.set_global_state (m_released_gil);
 	      return true;
 	    }
 	  else if (is_named_call_p (callee_fndecl, "PyEval_RestoreThread",
@@ -339,7 +349,7 @@ gil_state_machine::on_stmt (sm_context *sm_ctxt,
 		inform (input_location, "found call to %qs",
 			"PyEval_SaveThread");
 	      if (global_state == m_released_gil)
-		sm_ctxt->set_global_state (m_start);
+		sm_ctxt.set_global_state (m_start);
 	      return true;
 	    }
 	  else if (global_state == m_released_gil)
@@ -365,20 +375,6 @@ gil_state_machine::on_stmt (sm_context *sm_ctxt,
   return false;
 }
 
-/* Implementation of state_machine::on_condition vfunc for
-   gil_state_machine.  */
-
-void
-gil_state_machine::on_condition (sm_context *sm_ctxt ATTRIBUTE_UNUSED,
-				 const supernode *node ATTRIBUTE_UNUSED,
-				 const gimple *stmt ATTRIBUTE_UNUSED,
-				 tree lhs ATTRIBUTE_UNUSED,
-				 enum tree_code op ATTRIBUTE_UNUSED,
-				 tree rhs ATTRIBUTE_UNUSED) const
-{
-  // Empty
-}
-
 bool
 gil_state_machine::can_purge_p (state_t s ATTRIBUTE_UNUSED) const
 {
@@ -386,7 +382,7 @@ gil_state_machine::can_purge_p (state_t s ATTRIBUTE_UNUSED) const
 }
 
 void
-gil_state_machine::check_for_pyobject_usage_without_gil (sm_context *sm_ctxt,
+gil_state_machine::check_for_pyobject_usage_without_gil (sm_context &sm_ctxt,
 							 const supernode *node,
 							 const gimple *stmt,
 							 tree op) const
@@ -394,9 +390,9 @@ gil_state_machine::check_for_pyobject_usage_without_gil (sm_context *sm_ctxt,
   tree type = TREE_TYPE (op);
   if (type_based_on_pyobject_p (type))
     {
-      sm_ctxt->warn (node, stmt, NULL_TREE,
-		     new pyobject_usage_without_gil (*this, op));
-      sm_ctxt->set_global_state (m_stop);
+      sm_ctxt.warn (node, stmt, NULL_TREE,
+		    make_unique<pyobject_usage_without_gil> (*this, op));
+      sm_ctxt.set_global_state (m_stop);
     }
 }
 
@@ -410,7 +406,8 @@ gil_analyzer_init_cb (void *gcc_data, void */*user_data*/)
   LOG_SCOPE (iface->get_logger ());
   if (0)
     inform (input_location, "got here: gil_analyzer_init_cb");
-  iface->register_state_machine (new gil_state_machine (iface->get_logger ()));
+  iface->register_state_machine
+    (make_unique<gil_state_machine> (iface->get_logger ()));
 }
 
 } // namespace ana

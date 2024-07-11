@@ -1,5 +1,5 @@
 /* Core of implementation of libgccjit.so
-   Copyright (C) 2013-2021 Free Software Foundation, Inc.
+   Copyright (C) 2013-2024 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -36,7 +36,7 @@ along with GCC; see the file COPYING3.  If not see
 #endif
 #endif
 
-const int NUM_GCC_JIT_TYPES = GCC_JIT_TYPE_COMPLEX_LONG_DOUBLE + 1;
+const int NUM_GCC_JIT_TYPES = GCC_JIT_TYPE_BFLOAT16 + 1;
 
 /* This comment is included by the docs.
 
@@ -118,6 +118,7 @@ namespace recording {
         class struct_;
 	class union_;
       class vector_type;
+      class array_type;
     class field;
       class bitfield;
     class fields;
@@ -198,8 +199,18 @@ enum inner_bool_option
 {
   INNER_BOOL_OPTION_ALLOW_UNREACHABLE_BLOCKS,
   INNER_BOOL_OPTION_USE_EXTERNAL_DRIVER,
+  INNER_BOOL_OPTION_PRINT_ERRORS_TO_STDERR,
 
   NUM_INNER_BOOL_OPTIONS
+};
+
+/* Flags for global variables class.  For when the playback of the
+   global need to know what will happen to it later.  */
+enum global_var_flags
+{
+  GLOBAL_VAR_FLAGS_NONE = 0,
+  GLOBAL_VAR_FLAGS_WILL_BE_RVAL_INIT = 1,
+  GLOBAL_VAR_FLAGS_WILL_BE_BLOB_INIT = 2,
 };
 
 } // namespace gcc::jit

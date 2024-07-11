@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, for the pdp-11
-   Copyright (C) 1994-2021 Free Software Foundation, Inc.
+   Copyright (C) 1994-2024 Free Software Foundation, Inc.
    Contributed by Michael K. Gschwind (mike@vlsivie.tuwien.ac.at).
 
 This file is part of GCC.
@@ -49,10 +49,8 @@ along with GCC; see the file COPYING3.  If not see
     }						\
   while (0)
 
-
-/* Generate DBX debugging information.  */
-
-#define DBX_DEBUGGING_INFO
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE NO_DEBUG
 
 #define TARGET_40_PLUS		(TARGET_40 || TARGET_45)
 #define TARGET_10		(! TARGET_40_PLUS)
@@ -72,17 +70,6 @@ along with GCC; see the file COPYING3.  If not see
 #define INT_TYPE_SIZE		(TARGET_INT16 ? 16 : 32)
 #define LONG_TYPE_SIZE		32
 #define LONG_LONG_TYPE_SIZE	64     
-
-/* In earlier versions, FLOAT_TYPE_SIZE was selectable as 32 or 64,
-   but that conflicts with Fortran language rules.  Since there is no
-   obvious reason why we should have that feature -- other targets
-   generally don't have float and double the same size -- I've removed
-   it.  Note that it continues to be true (for now) that arithmetic is
-   always done with 64-bit values, i.e., the FPU is always in "double"
-   mode.  */
-#define FLOAT_TYPE_SIZE		32
-#define DOUBLE_TYPE_SIZE	64
-#define LONG_DOUBLE_TYPE_SIZE	64
 
 /* machine types from ansi */
 #define SIZE_TYPE "short unsigned int" 	/* definition of size_t */
@@ -413,7 +400,7 @@ extern int current_first_parm_offset;
    They give nonzero only if REGNO is a hard reg of the suitable class
    or a pseudo reg currently allocated to a suitable hard reg.
    Since they use reg_renumber, they are safe only once reg_renumber
-   has been allocated, which happens in reginfo.c during register
+   has been allocated, which happens in reginfo.cc during register
    allocation.  */
 
 #define REGNO_OK_FOR_BASE_P(REGNO)  \
@@ -485,9 +472,6 @@ extern int current_first_parm_offset;
 
 /* Nonzero if access to memory by byte is no faster than by word.  */
 #define SLOW_BYTE_ACCESS 1
-
-/* Do not break .stabs pseudos into continuations.  */
-#define DBX_CONTIN_LENGTH 0
 
 /* Give a comparison code (EQ, NE etc) and the first operand of a COMPARE,
    return the mode to be used for the comparison.  */
@@ -618,10 +602,12 @@ extern int current_first_parm_offset;
     fprintf (FILE, "\t.even\n")
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  if (TARGET_DEC_ASM) \
-    fprintf (FILE, "\t.blkb\t%o\n", (SIZE) & 0xffff);	\
-  else							\
-    fprintf (FILE, "\t.=.+ %#o\n", (SIZE) & 0xffff);
+  do {								\
+    if (TARGET_DEC_ASM)						\
+      fprintf (FILE, "\t.blkb\t%o\n", (int) ((SIZE) & 0xffff));	\
+    else							\
+      fprintf (FILE, "\t.=.+ %#o\n", (int) ((SIZE) & 0xffff));	\
+  } while (0)
 
 /* This says how to output an assembler line
    to define a global common symbol.  */

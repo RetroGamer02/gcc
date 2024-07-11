@@ -27,6 +27,7 @@ typedef svint32x2_t bad_type_6 __attribute__ ((arm_sve_vector_bits (N))); // { d
 typedef svint8_t bad_type_7 __attribute__ ((arm_sve_vector_bits (N))) __attribute__ ((arm_sve_vector_bits (N))); // { dg-error {'arm_sve_vector_bits' applied to type 'svint8_t __attribute__\(\(arm_sve_vector_bits\([0-9]+\)\)\)', which already has a size} }
 typedef fixed_bool_t bad_type_8 __attribute__ ((arm_sve_vector_bits (N))) __attribute__ ((arm_sve_vector_bits (N))); // { dg-error {'arm_sve_vector_bits' applied to type 'fixed_bool_t' {aka 'svbool_t __attribute__\(\(arm_sve_vector_bits\([0-9]+\)\)\)'}, which already has a size} }
 typedef gnu_int8_t bad_type_9 __attribute__ ((arm_sve_vector_bits (N))) __attribute__ ((arm_sve_vector_bits (N))); // { dg-error {'arm_sve_vector_bits' applied to non-SVE type 'gnu_int8_t'} }
+typedef svcount_t bad_type_10 __attribute__ ((arm_sve_vector_bits (N))); // { dg-error {'arm_sve_vector_bits' applied to non-vector type 'svcount_t'} }
 
 void
 f (int c)
@@ -85,19 +86,19 @@ f (int c)
 
   (void) (c ? fs8 : ss8); // { dg-error {type mismatch|different types} }
   (void) (c ? fs8 : fs8);
-  (void) (c ? fs8 : gs8); // { dg-error {type mismatch|different types} "" { xfail c++ } }
+  (void) (c ? fs8 : gs8); // { dg-error {type mismatch|different types} }
 
   (void) (c ? gs8 : ss8); // { dg-error {type mismatch|different types} }
-  (void) (c ? gs8 : fs8); // { dg-error {type mismatch|different types} "" { xfail c++ } }
+  (void) (c ? gs8 : fs8); // { dg-error {type mismatch|different types} }
   (void) (c ? gs8 : gs8);
 
   sb = fb;
   fb = sb;
 
   (void) (c ? sb : sb);
-  (void) (c ? sb : fb); // { dg-error {type mismatch|different types} "" { xfail *-*-* } }
+  (void) (c ? sb : fb); // { dg-error {type mismatch|different types} "$tool" { xfail c } }
 
-  (void) (c ? fb : sb); // { dg-error {type mismatch|different types} "" { xfail *-*-* } }
+  (void) (c ? fb : sb); // { dg-error {type mismatch|different types} "$tool" { xfail c } }
   (void) (c ? fb : fb);
 }
 
@@ -123,63 +124,73 @@ g (int c)
   void *select __attribute__((unused));
 
   diff = ss8 - ss8; // { dg-error {arithmetic on pointer to SVE type 'svint8_t'} }
-  diff = ss8 - fs8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" { xfail c } }
-		    // { dg-error {arithmetic on pointer to SVE type 'svint8_t'} "bogus" { target c } .-1 }
-  diff = ss8 - gs8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" { xfail c } }
-		    // { dg-error {arithmetic on pointer to SVE type 'svint8_t'} "bogus" { target c } .-1 }
+  diff = ss8 - fs8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" }
+  diff = ss8 - gs8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" }
 
-  diff = fs8 - ss8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" { xfail c } }
-		    // { dg-error {arithmetic on pointer to SVE type 'svint8_t'} "bogus" { target c } .-1 }
+  diff = fs8 - ss8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" }
   diff = fs8 - fs8;
-  diff = fs8 - gs8;
+  diff = fs8 - gs8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" }
 
-  diff = gs8 - ss8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" { xfail c } }
-		    // { dg-error {arithmetic on pointer to SVE type 'svint8_t'} "bogus" { target c } .-1 }
-  diff = gs8 - fs8;
+  diff = gs8 - ss8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" }
+  diff = gs8 - fs8; // { dg-error {invalid operands [^\n]* binary[^\n]*\-} "" }
   diff = gs8 - gs8;
 
-  fs8 = ss8; // { dg-error {invalid conversion} "" { xfail c } }
+  fs8 = ss8; // { dg-error {invalid conversion} "" { target c++ } }
+	     // { dg-error {incompatible pointer type} "c" { target c } .-1 }
   fs8 = fs8;
-  fs8 = gs8;
+  fs8 = gs8; // { dg-error {invalid conversion} "" { target c++ } }
+	     // { dg-error {incompatible pointer type} "c" { target c } .-1 }
 
   fs8 = su8; // { dg-error {cannot convert} "c++" { target c++ } }
-	     // { dg-warning {incompatible pointer type} "c" { target c } .-1 }
+	     // { dg-error {incompatible pointer type} "c" { target c } .-1 }
   fs8 = fu8; // { dg-error {cannot convert} "c++" { target c++ } }
-	     // { dg-warning {incompatible pointer type} "c" { target c } .-1 }
+	     // { dg-error {incompatible pointer type} "c" { target c } .-1 }
   fs8 = gu8; // { dg-error {cannot convert} "c++" { target c++ } }
-	     // { dg-warning {incompatible pointer type} "c" { target c } .-1 }
+	     // { dg-error {incompatible pointer type} "c" { target c } .-1 }
 
   fs8 = ss16; // { dg-error {cannot convert} "c++" { target c++ } }
-              // { dg-warning {incompatible pointer type} "c" { target c } .-1 }
+	      // { dg-error {incompatible pointer type} "c" { target c } .-1 }
   fs8 = fs16; // { dg-error {cannot convert} "c++" { target c++ } }
-              // { dg-warning {incompatible pointer type} "c" { target c } .-1 }
+	      // { dg-error {incompatible pointer type} "c" { target c } .-1 }
   fs8 = gs16; // { dg-error {cannot convert} "c++" { target c++ } }
-              // { dg-warning {incompatible pointer type} "c" { target c } .-1 }
+	      // { dg-error {incompatible pointer type} "c" { target c } .-1 }
 
   select = c ? ss8 : ss8;
-  select = c ? ss8 : fs8; // { dg-error {distinct pointer types} "" { xfail c } }
-  select = c ? ss8 : gs8; // { dg-error {distinct pointer types} "" { xfail c } }
+  select = c ? ss8 : fs8; // { dg-error {distinct pointer types} "" { target c++ } }
+			  // { dg-error {pointer type mismatch} "c" { target c } .-1 }
+  select = c ? ss8 : gs8; // { dg-error {distinct pointer types} "" { target c++ } }
+			  // { dg-error {pointer type mismatch} "c" { target c } .-1 }
 
-  select = c ? fs8 : ss8; // { dg-error {distinct pointer types} "" { xfail c } }
+  select = c ? fs8 : ss8; // { dg-error {distinct pointer types} "" { target c++ } }
+			  // { dg-error {pointer type mismatch} "c" { target c } .-1 }
   select = c ? fs8 : fs8;
-  select = c ? fs8 : gs8; // { dg-error {distinct pointer types} "" { xfail *-*-* } }
+  select = c ? fs8 : gs8; // { dg-error {distinct pointer types} "" { target c++ } }
+			  // { dg-error {pointer type mismatch} "c" { target c } .-1 }
 
-  select = c ? gs8 : ss8; // { dg-error {distinct pointer types} "" { xfail c } }
-  select = c ? gs8 : fs8; // { dg-error {distinct pointer types} "" { xfail *-*-* } }
+  select = c ? gs8 : ss8; // { dg-error {distinct pointer types} "" { target c++ } }
+			  // { dg-error {pointer type mismatch} "c" { target c } .-1 }
+  select = c ? gs8 : fs8; // { dg-error {distinct pointer types} "" { target c++ } }
+			  // { dg-error {pointer type mismatch} "c" { target c } .-1 }
   select = c ? gs8 : gs8;
 
   diff = sb - sb; // { dg-error {arithmetic on pointer to SVE type 'svbool_t'} }
-  diff = sb - fb; // { dg-error {arithmetic on pointer to SVE type 'svbool_t'} }
+  diff = sb - fb; // { dg-error {invalid operands} "" { target c++ }  }
+		  // { dg-error {arithmetic on pointer to SVE type 'svbool_t'} "c" { target c } .-1 }
 
-  diff = fb - sb; // { dg-error {arithmetic on pointer to SVE type 'svbool_t'} }
+  diff = fb - sb; // { dg-error {invalid operands} "" { target c++ }  }
+		  // { dg-error {arithmetic on pointer to SVE type 'svbool_t'} "c" { target c } .-1 }
   diff = fb - fb;
 
-  sb = fb;
-  fb = sb;
+  sb = fb; // { dg-error {invalid conversion} "" { target c++ } }
+	   // { dg-warning {incompatible pointer type} "c" { target c xfail c } .-1 }
+  fb = sb; // { dg-error {invalid conversion} "" { target c++ } }
+	   // { dg-warning {incompatible pointer type} "c" { target c xfail c } .-1 }
 
   select = c ? sb : sb;
-  select = c ? sb : fb; // { dg-error {type mismatch|different types} "" { xfail *-*-* } }
+  select = c ? sb : fb; // { dg-error {distinct pointer types} "" { target c++ } }
+			// { dg-warning {pointer type mismatch} "c" { target c xfail c } .-1 }
 
-  select = c ? fb : sb; // { dg-error {type mismatch|different types} "" { xfail *-*-* } }
+  select = c ? fb : sb; // { dg-error {distinct pointer types} "" { target c++ } }
+			// { dg-warning {pointer type mismatch} "c" { target c xfail c } .-1 }
   select = c ? fb : fb;
 }

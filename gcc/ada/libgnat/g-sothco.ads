@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                     Copyright (C) 2008-2020, AdaCore                     --
+--                     Copyright (C) 2008-2024, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -34,6 +34,7 @@
 
 with Ada.Unchecked_Conversion;
 with Interfaces.C.Strings;
+with System.Parameters;
 
 package GNAT.Sockets.Thin_Common is
 
@@ -44,9 +45,9 @@ package GNAT.Sockets.Thin_Common is
    Failure : constant C.int := -1;
 
    type time_t is
-     range -2 ** (8 * SOSC.SIZEOF_tv_sec - 1)
-         .. 2 ** (8 * SOSC.SIZEOF_tv_sec - 1) - 1;
-   for time_t'Size use 8 * SOSC.SIZEOF_tv_sec;
+     range -2 ** (System.Parameters.time_t_bits - 1)
+        .. 2 ** (System.Parameters.time_t_bits - 1) - 1;
+   for time_t'Size use System.Parameters.time_t_bits;
    pragma Convention (C, time_t);
 
    type suseconds_t is
@@ -74,16 +75,16 @@ package GNAT.Sockets.Thin_Common is
    -------------------------------------------
 
    Families : constant array (Family_Type) of C.int :=
-                (Family_Unspec => SOSC.AF_UNSPEC,
+                [Family_Unspec => SOSC.AF_UNSPEC,
                  Family_Unix   => SOSC.AF_UNIX,
                  Family_Inet   => SOSC.AF_INET,
-                 Family_Inet6  => SOSC.AF_INET6);
+                 Family_Inet6  => SOSC.AF_INET6];
 
    Lengths  : constant array (Family_Type) of C.unsigned_char :=
-                (Family_Unspec => 0,
+                [Family_Unspec => 0,
                  Family_Unix   => SOSC.SIZEOF_sockaddr_un,
                  Family_Inet   => SOSC.SIZEOF_sockaddr_in,
-                 Family_Inet6  => SOSC.SIZEOF_sockaddr_in6);
+                 Family_Inet6  => SOSC.SIZEOF_sockaddr_in6];
 
    ----------------------------
    -- Generic socket address --
@@ -122,10 +123,13 @@ package GNAT.Sockets.Thin_Common is
 
    type In_Addr is record
       S_B1, S_B2, S_B3, S_B4 : C.unsigned_char;
-   end record with Convention => C, Alignment => C.int'Alignment;
+   end record
+     with Convention => C, Alignment  => C.int'Alignment, Universal_Aliasing;
    --  IPv4 address, represented as a network-order C.int. Note that the
    --  underlying operating system may assume that values of this type have
-   --  C.int alignment, so we need to provide a suitable alignment clause here.
+   --  C.int's alignment, so we need to provide a suitable alignment clause.
+   --  We also need to inhibit strict type-based aliasing optimizations in
+   --  order to implement the following unchecked conversions efficiently.
 
    function To_In_Addr is new Ada.Unchecked_Conversion (C.int, In_Addr);
    function To_Int     is new Ada.Unchecked_Conversion (In_Addr, C.int);
@@ -159,7 +163,7 @@ package GNAT.Sockets.Thin_Common is
          Sin_Addr : In_Addr := (others => 0);
          --  IPv4 address
 
-         Sin_Zero : C.char_array (1 .. 8) := (others => C.nul);
+         Sin_Zero : C.char_array (1 .. 8) := [others => C.nul];
          --  Padding
          --
          --  Note that some platforms require that all unused (reserved) bytes
@@ -173,7 +177,7 @@ package GNAT.Sockets.Thin_Common is
          --  Port in network byte order
 
          Sin6_FlowInfo : Interfaces.Unsigned_32 := 0;
-         Sin6_Addr     : In6_Addr := (others => 0);
+         Sin6_Addr     : In6_Addr := [others => 0];
          Sin6_Scope_Id : Interfaces.Unsigned_32 := 0;
 
       when Family_Unix =>

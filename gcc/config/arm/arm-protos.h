@@ -1,5 +1,5 @@
-/* Prototypes for exported functions defined in arm.c and pe.c
-   Copyright (C) 1999-2021 Free Software Foundation, Inc.
+/* Prototypes for exported functions defined in arm.cc and pe.c
+   Copyright (C) 1999-2024 Free Software Foundation, Inc.
    Contributed by Richard Earnshaw (rearnsha@arm.com)
    Minor hacks by Nick Clifton (nickc@cygnus.com)
 
@@ -23,6 +23,9 @@
 #define GCC_ARM_PROTOS_H
 
 #include "sbitmap.h"
+#include "tree.h" /* For ERROR_MARK.  */
+
+rtl_opt_pass *make_pass_insert_bti (gcc::context *ctxt);
 
 extern enum unwind_info_type arm_except_unwind_info (struct gcc_options *);
 extern int use_return_insn (int, rtx);
@@ -45,7 +48,7 @@ extern HOST_WIDE_INT arm_compute_initial_elimination_offset (unsigned int,
 							     unsigned int);
 extern HOST_WIDE_INT thumb_compute_initial_elimination_offset (unsigned int,
 							       unsigned int);
-extern unsigned int arm_dbx_register_number (unsigned int);
+extern unsigned int arm_debugger_regno (unsigned int);
 extern void arm_output_fn_unwind (FILE *, bool);
 
 extern rtx arm_expand_builtin (tree exp, rtx target, rtx subtarget
@@ -62,8 +65,8 @@ extern void arm_emit_speculation_barrier_function (void);
 extern void arm_decompose_di_binop (rtx, rtx, rtx *, rtx *, rtx *, rtx *);
 extern bool arm_q_bit_access (void);
 extern bool arm_ge_bits_access (void);
-extern bool arm_target_insn_ok_for_lob (rtx);
-
+extern bool arm_target_bb_ok_for_lob (basic_block);
+extern int arm_attempt_dlstp_transform (rtx);
 #ifdef RTX_CODE
 enum reg_class
 arm_mode_base_reg_class (machine_mode);
@@ -81,7 +84,8 @@ extern int arm_split_constant (RTX_CODE, machine_mode, rtx,
 extern int legitimate_pic_operand_p (rtx);
 extern rtx legitimize_pic_address (rtx, machine_mode, rtx, rtx, bool);
 extern rtx legitimize_tls_address (rtx, rtx);
-extern bool arm_legitimate_address_p (machine_mode, rtx, bool);
+extern bool arm_legitimate_address_p (machine_mode, rtx, bool,
+				      code_helper = ERROR_MARK);
 extern int arm_legitimate_address_outer_p (machine_mode, rtx, RTX_CODE, int);
 extern int thumb_legitimate_offset_p (machine_mode, HOST_WIDE_INT);
 extern int thumb1_legitimate_address_p (machine_mode, rtx, int);
@@ -101,8 +105,8 @@ extern char *neon_output_shift_immediate (const char *, char, rtx *,
 					  machine_mode, int, bool);
 extern void neon_pairwise_reduce (rtx, rtx, machine_mode,
 				  rtx (*) (rtx, rtx, rtx));
+extern rtx mve_bool_vec_to_const (rtx const_vec);
 extern rtx neon_make_constant (rtx, bool generate = true);
-extern tree arm_builtin_vectorized_function (unsigned int, tree, tree);
 extern void neon_expand_vector_init (rtx, rtx);
 extern void neon_lane_bounds (rtx, HOST_WIDE_INT, HOST_WIDE_INT, const_tree);
 extern void arm_const_bounds (rtx, HOST_WIDE_INT, HOST_WIDE_INT);
@@ -122,6 +126,7 @@ extern int arm_coproc_mem_operand_wb (rtx, int);
 extern int neon_vector_mem_operand (rtx, int, bool);
 extern int mve_vector_mem_operand (machine_mode, rtx, bool);
 extern int neon_struct_mem_operand (rtx);
+extern int mve_struct_mem_operand (rtx);
 
 extern rtx *neon_vcmla_lane_prepare_operands (rtx *);
 
@@ -179,6 +184,7 @@ extern bool arm_is_long_call_p (tree);
 extern int    arm_emit_vector_const (FILE *, rtx);
 extern void arm_emit_fp16_const (rtx c);
 extern const char * arm_output_load_gr (rtx *);
+extern const char * arm_output_load_tpidr (rtx, bool);
 extern const char *vfp_output_vstmd (rtx *);
 extern void arm_output_multireg_pop (rtx *, bool, rtx, bool, bool);
 extern void arm_set_return_address (rtx, rtx);
@@ -195,14 +201,47 @@ extern void arm_split_atomic_op (enum rtx_code, rtx, rtx, rtx, rtx, rtx, rtx);
 extern rtx arm_load_tp (rtx);
 extern bool arm_coproc_builtin_available (enum unspecv);
 extern bool arm_coproc_ldc_stc_legitimate_address (rtx);
+extern rtx arm_stack_protect_tls_canary_mem (bool);
+
 
 #if defined TREE_CODE
 extern void arm_init_cumulative_args (CUMULATIVE_ARGS *, tree, rtx, tree);
 extern bool arm_pad_reg_upward (machine_mode, tree, int);
 #endif
 extern int arm_apply_result_size (void);
+extern opt_machine_mode arm_get_mask_mode (machine_mode mode);
 
 #endif /* RTX_CODE */
+
+/* It's convenient to divide the built-in function codes into groups,
+   rather than having everything in a single enum.  This type enumerates
+   those groups.  */
+enum arm_builtin_class
+{
+  ARM_BUILTIN_GENERAL,
+  ARM_BUILTIN_MVE
+};
+
+/* Built-in function codes are structured so that the low
+   ARM_BUILTIN_SHIFT bits contain the arm_builtin_class
+   and the upper bits contain a group-specific subcode.  */
+const unsigned int ARM_BUILTIN_SHIFT = 1;
+
+/* Mask that selects the arm part of a function code.  */
+const unsigned int ARM_BUILTIN_CLASS = (1 << ARM_BUILTIN_SHIFT) - 1;
+
+/* MVE functions.  */
+namespace arm_mve {
+  void handle_arm_mve_types_h ();
+  void handle_arm_mve_h (bool);
+  tree builtin_decl (unsigned);
+  tree resolve_overloaded_builtin (location_t, unsigned int,
+				   vec<tree, va_gc> *);
+  bool check_builtin_call (location_t, vec<location_t>, unsigned int,
+			   tree, unsigned int, tree *);
+  gimple *gimple_fold_builtin (unsigned int code, gcall *stmt);
+  rtx expand_builtin (unsigned int, tree, rtx);
+}
 
 /* Thumb functions.  */
 extern void arm_init_expanders (void);
@@ -222,29 +261,17 @@ extern void thumb_expand_cpymemqi (rtx *);
 extern rtx arm_return_addr (int, rtx);
 extern void thumb_reload_out_hi (rtx *);
 extern void thumb_set_return_address (rtx, rtx);
+extern const char *arm_output_casesi (rtx *);
 extern const char *thumb1_output_casesi (rtx *);
 extern const char *thumb2_output_casesi (rtx *);
 #endif
 
-/* Defined in pe.c.  */
-extern int arm_dllexport_name_p (const char *);
-extern int arm_dllimport_name_p (const char *);
-
-#ifdef TREE_CODE
-extern void arm_pe_unique_section (tree, int);
-extern void arm_pe_encode_section_info (tree, rtx, int);
-extern int arm_dllexport_p (tree);
-extern int arm_dllimport_p (tree);
-extern void arm_mark_dllexport (tree);
-extern void arm_mark_dllimport (tree);
 extern bool arm_change_mode_p (tree);
-#endif
 
 extern tree arm_valid_target_attribute_tree (tree, struct gcc_options *,
 					     struct gcc_options *);
 extern void arm_configure_build_target (struct arm_build_target *,
-					struct cl_target_option *,
-					struct gcc_options *, bool);
+					struct cl_target_option *, bool);
 extern void arm_option_reconfigure_globals (void);
 extern void arm_options_perform_arch_sanity_checks (void);
 extern void arm_pr_long_calls (struct cpp_reader *);
@@ -371,6 +398,7 @@ extern int vfp3_const_double_for_bits (rtx);
 extern void arm_emit_coreregs_64bit_shift (enum rtx_code, rtx, rtx, rtx, rtx,
 					   rtx);
 extern bool arm_fusion_enabled_p (tune_params::fuse_ops);
+extern bool arm_current_function_pac_enabled_p (void);
 extern bool arm_valid_symbolic_address_p (rtx);
 extern bool arm_validize_comparison (rtx *, rtx *, rtx *);
 extern bool arm_expand_vector_compare (rtx, rtx_code, rtx, rtx, bool);
@@ -387,17 +415,13 @@ extern void arm_emit_eabi_attribute (const char *, int, int);
 extern void arm_reset_previous_fndecl (void);
 extern void save_restore_target_globals (tree);
 
-/* Defined in gcc/common/config/arm-common.c.  */
+/* Defined in gcc/common/config/arm-common.cc.  */
 extern const char *arm_rewrite_selected_cpu (const char *name);
 
-/* Defined in gcc/common/config/arm-c.c.  */
+/* Defined in gcc/common/config/arm-c.cc.  */
 extern void arm_lang_object_attributes_init (void);
 extern void arm_register_target_pragmas (void);
 extern void arm_cpu_cpp_builtins (struct cpp_reader *);
-
-/* Defined in arm-d.c  */
-extern void arm_d_target_versions (void);
-extern void arm_d_register_target_info (void);
 
 extern bool arm_is_constant_pool_ref (rtx);
 
@@ -577,6 +601,7 @@ struct cpu_option
 
 extern const arch_option all_architectures[];
 extern const cpu_option all_cores[];
+
 
 const cpu_option *arm_parse_cpu_option_name (const cpu_option *, const char *,
 					     const char *, bool = true);

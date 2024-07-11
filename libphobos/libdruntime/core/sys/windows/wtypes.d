@@ -4,11 +4,10 @@
  * Translated from MinGW Windows headers
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_wtypes.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_wtypes.d)
  */
 module core.sys.windows.wtypes;
 version (Windows):
-@system:
 
 import core.sys.windows.rpc, core.sys.windows.rpcndr;
 import core.sys.windows.windef;
@@ -97,8 +96,8 @@ alias OLECHAR* BSTR;
 alias FLAGGED_WORD_BLOB* wireBSTR;
 alias BSTR* LPBSTR;
 //alias LONG SCODE; // also in winerror
-mixin DECLARE_HANDLE!("HCONTEXT");
-mixin DECLARE_HANDLE!("HMETAFILEPICT");
+alias HCONTEXT = HANDLE;
+alias HMETAFILEPICT = HANDLE;
 
 union CY {
     struct {

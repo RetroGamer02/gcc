@@ -1,4 +1,7 @@
-#include <stdio.h>
+typedef struct FILE   FILE;
+
+FILE* fopen (const char*, const char*);
+int   fclose (FILE*);
 
 extern int foo ();
 extern void bar ();
@@ -11,6 +14,8 @@ void test_1 (const char *path, int flag)
 
   if (!fp) /* { dg-message "when 'fp' is non-NULL" } */
     return;
+
+  bar ();
 
   /* We shouldn't report this control flow.  */
   while (foo ()) /* { dg-bogus "" } */

@@ -5,11 +5,10 @@
  *
  * Authors: Stewart Gordon
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_shellapi.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_shellapi.d)
  */
 module core.sys.windows.shellapi;
 version (Windows):
-@system:
 
 version (ANSI) {} else version = Unicode;
 pragma(lib, "shell32");
@@ -189,7 +188,7 @@ enum SHERB_NOPROGRESSUI   = 2;
 enum SHERB_NOSOUND        = 4;
 
 alias WORD FILEOP_FLAGS, PRINTEROP_FLAGS;
-mixin DECLARE_HANDLE!("HDROP");
+alias HDROP = HANDLE;
 
 //align(2): // 1 in Win32, default in Win64
 

@@ -6,7 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *         Copyright (C) 1992-2020, Free Software Foundation, Inc.          *
+ *         Copyright (C) 1992-2024, Free Software Foundation, Inc.          *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -35,18 +35,35 @@
 #ifdef __vxworks
 #include "vxWorks.h"
 #include "ioLib.h"
-#if ! defined (VTHREADS)
+/* VxWorks 5, 6 and 7 SR0540 expose error codes that need to be handled
+   as ENOENT. On later versions:
+   - either they are defined as ENOENT (vx7r2);
+   - or the corresponding system includes are not provided (Helix Cert).  */
+
+#if __has_include ("dosFsLib.h")
+/* On helix-cert, this include is only provided for RTPs.  */
 #include "dosFsLib.h"
 #endif
-#if ! defined (__RTP__) && (! defined (VTHREADS) || defined (__VXWORKSMILS__))
+
+#ifndef S_dosFsLib_FILE_NOT_FOUND
+#define S_dosFsLib_FILE_NOT_FOUND ENOENT
+#endif
+
+#if __has_include ("nfsLib.h")
+/* This include is not provided for RTPs or on helix-cert.  */
 # include "nfsLib.h"
 #endif
+
+#ifndef S_nfsLib_NFSERR_NOENT
+#define S_nfsLib_NFSERR_NOENT ENOENT
+#endif
+
 #include "selectLib.h"
 #include "version.h"
 #if defined (__RTP__)
 #  include "vwModNum.h"
 #endif /* __RTP__ */
-#endif
+#endif /* __vxworks */
 
 #ifdef __ANDROID__
 #undef __linux__
@@ -217,6 +234,7 @@ __gnat_ttyname (int filedes)
 #endif /* __CYGWIN__ */
 
 #if defined (__CYGWIN__) || defined (__MINGW32__)
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 int __gnat_is_windows_xp (void);
@@ -323,11 +341,7 @@ __gnat_ttyname (int filedes ATTRIBUTE_UNUSED)
   || defined (__QNX__)
 
 # ifdef __MINGW32__
-#  if OLD_MINGW
-#   include <termios.h>
-#  else
-#   include <conio.h>  /* for getch(), kbhit() */
-#  endif
+#  include <conio.h>  /* for getch(), kbhit() */
 # else
 #  include <termios.h>
 # endif
@@ -593,6 +607,7 @@ getc_immediate_common (FILE *stream,
    Ada programs.  */
 
 #ifdef WINNT
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 /* Provide functions to echo the values passed to WinMain (windows bindings
@@ -643,11 +658,11 @@ long __gnat_invalid_tzoff = 259273;
 /* Reentrant localtime for Windows. */
 
 extern void
-__gnat_localtime_tzoff (const time_t *, const int *, long *);
+__gnat_localtime_tzoff (const OS_Time *, const int *, long *);
 
 static const unsigned long long w32_epoch_offset = 11644473600ULL;
 void
-__gnat_localtime_tzoff (const time_t *timer, const int *is_historic, long *off)
+__gnat_localtime_tzoff (const OS_Time *timer, const int *is_historic, long *off)
 {
   TIME_ZONE_INFORMATION tzi;
 
@@ -737,10 +752,10 @@ __gnat_localtime_tzoff (const time_t *timer, const int *is_historic, long *off)
    the Lynx convention when building against the legacy API. */
 
 extern void
-__gnat_localtime_tzoff (const time_t *, const int *, long *);
+__gnat_localtime_tzoff (const OS_Time *, const int *, long *);
 
 void
-__gnat_localtime_tzoff (const time_t *timer, const int *is_historic, long *off)
+__gnat_localtime_tzoff (const OS_Time *timer, const int *is_historic, long *off)
 {
   *off = 0;
 }
@@ -756,21 +771,22 @@ extern void (*Lock_Task) (void);
 extern void (*Unlock_Task) (void);
 
 extern void
-__gnat_localtime_tzoff (const time_t *, const int *, long *);
+__gnat_localtime_tzoff (const OS_Time *, const int *, long *);
 
 void
-__gnat_localtime_tzoff (const time_t *timer ATTRIBUTE_UNUSED,
+__gnat_localtime_tzoff (const OS_Time *timer ATTRIBUTE_UNUSED,
 			const int *is_historic ATTRIBUTE_UNUSED,
 			long *off ATTRIBUTE_UNUSED)
 {
   struct tm tp ATTRIBUTE_UNUSED;
+  const time_t time = (time_t) *timer;
 
 /* AIX, HPUX, Sun Solaris */
 #if defined (_AIX) || defined (__hpux__) || defined (__sun__)
 {
   (*Lock_Task) ();
 
-  localtime_r (timer, &tp);
+  localtime_r (&time, &tp);
   *off = (long) -timezone;
 
   (*Unlock_Task) ();
@@ -787,7 +803,7 @@ __gnat_localtime_tzoff (const time_t *timer ATTRIBUTE_UNUSED,
 {
   (*Lock_Task) ();
 
-  localtime_r (timer, &tp);
+  localtime_r (&time, &tp);
 
   /* Try to read the environment variable TIMEZONE. The variable may not have
      been initialize, in that case return an offset of zero (0) for UTC. */
@@ -833,7 +849,7 @@ __gnat_localtime_tzoff (const time_t *timer ATTRIBUTE_UNUSED,
   || defined (__GLIBC__) || defined (__DragonFly__) || defined (__OpenBSD__) \
   || defined (__DJGPP__) || defined (__QNX__)
 {
-  localtime_r (timer, &tp);
+  localtime_r (&time, &tp);
   *off = tp.tm_gmtoff;
 }
 
@@ -906,17 +922,17 @@ __gnat_is_file_not_found_error (int errno_val)
     if (errno_val == ENOENT)
       return 1;
 #ifdef __vxworks
+    /* Starting with VxWorks 21.03, the fopen() function can set errno to
+     * ENODEV when the prefix of the path does not match any known device. */
+    else if (errno_val == ENODEV)
+      return 1;
     /* In the case of VxWorks, we also have to take into account various
      * filesystem-specific variants of this error.
      */
-#if ! defined (VTHREADS) && (_WRS_VXWORKS_MAJOR < 7)
     else if (errno_val == S_dosFsLib_FILE_NOT_FOUND)
       return 1;
-#endif
-#if ! defined (__RTP__) && (! defined (VTHREADS) || defined (__VXWORKSMILS__))
     else if (errno_val ==  S_nfsLib_NFSERR_NOENT)
       return 1;
-#endif
 #if defined (__RTP__)
     /* An RTP can return an NFS file not found, and the NFS bits must
        first be masked on to check the errno.  */

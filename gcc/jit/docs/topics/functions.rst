@@ -1,4 +1,4 @@
-.. Copyright (C) 2014-2021 Free Software Foundation, Inc.
+.. Copyright (C) 2014-2024 Free Software Foundation, Inc.
    Originally contributed by David Malcolm <dmalcolm@redhat.com>
 
    This is free software: you can redistribute it and/or modify it
@@ -13,7 +13,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see
-   <http://www.gnu.org/licenses/>.
+   <https://www.gnu.org/licenses/>.
 
 .. default-domain:: c
 
@@ -80,7 +80,7 @@ Functions
 
    Create a gcc_jit_function with the given name and parameters.
 
-   .. type:: enum gcc_jit_function_kind
+   .. enum:: gcc_jit_function_kind
 
    This enum controls the kind of function created, and has the following
    values:
@@ -170,6 +170,95 @@ Functions
    The parameter ``name`` must be non-NULL.  The call takes a copy of the
    underlying string, so it is valid to pass in a pointer to an on-stack
    buffer.
+
+.. function::  size_t \
+               gcc_jit_function_get_param_count (gcc_jit_function *func)
+
+   Get the number of parameters of the function.
+
+.. function::  gcc_jit_type *\
+               gcc_jit_function_get_return_type (gcc_jit_function *func)
+
+   Get the return type of the function.
+
+   The API entrypoints relating to getting info about parameters and return
+   types:
+
+      * :c:func:`gcc_jit_function_get_return_type`
+
+      * :c:func:`gcc_jit_function_get_param_count`
+
+   were added in :ref:`LIBGCCJIT_ABI_16`; you can test for their presence
+   using
+
+   .. code-block:: c
+
+      #ifdef LIBGCCJIT_HAVE_REFLECTION
+
+   .. type:: gcc_jit_case
+
+.. function::  void\
+               gcc_jit_function_add_attribute (gcc_jit_function *func,
+                                               enum gcc_jit_fn_attribute attribute)
+
+     Add an attribute ``attribute`` to a function ``func``.
+
+     This is equivalent to the following code:
+
+  .. code-block:: c
+
+    __attribute__((always_inline))
+
+   This entrypoint was added in :ref:`LIBGCCJIT_ABI_26`; you can test for
+   its presence using
+
+   .. code-block:: c
+
+      #ifdef LIBGCCJIT_HAVE_ATTRIBUTES
+
+.. function::  void\
+               gcc_jit_function_add_string_attribute (gcc_jit_function *func,
+                                                      enum gcc_jit_fn_attribute attribute,
+                                                      const char *value)
+
+     Add a string attribute ``attribute`` with value ``value`` to a function
+     ``func``.
+
+     This is equivalent to the following code:
+
+  .. code-block:: c
+
+    __attribute__ ((alias ("xxx")))
+
+   This entrypoint was added in :ref:`LIBGCCJIT_ABI_26`; you can test for
+   its presence using
+
+   .. code-block:: c
+
+      #ifdef LIBGCCJIT_HAVE_ATTRIBUTES
+
+.. function::  void\
+               gcc_jit_function_add_integer_array_attribute (gcc_jit_function *func,
+                                                             enum gcc_jit_fn_attribute attribute,
+                                                             const int *value,
+                                                             size_t length)
+
+     Add an attribute ``attribute`` with ``length`` integer values ``value`` to a
+     function ``func``. The integer values must be the same as you would write
+     them in a C code.
+
+     This is equivalent to the following code:
+
+  .. code-block:: c
+
+    __attribute__ ((nonnull (1, 2)))
+
+   This entrypoint was added in :ref:`LIBGCCJIT_ABI_26`; you can test for
+   its presence using
+
+   .. code-block:: c
+
+      #ifdef LIBGCCJIT_HAVE_ATTRIBUTES
 
 Blocks
 ------

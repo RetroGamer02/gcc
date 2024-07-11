@@ -1,6 +1,6 @@
 // Iostreams base classes -*- C++ -*-
 
-// Copyright (C) 1997-2021 Free Software Foundation, Inc.
+// Copyright (C) 1997-2024 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -66,6 +66,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _CharT, typename _Traits>
     class basic_ios : public ios_base
     {
+#if __cplusplus >= 202002L
+      static_assert(is_same_v<_CharT, typename _Traits::char_type>);
+#endif
+
     public:
       ///@{
       /**
@@ -157,9 +161,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       setstate(iostate __state)
       { this->clear(this->rdstate() | __state); }
 
-      // Flip the internal state on for the proper state bits, then
+      // Flips the internal state on for the proper state bits, then
       // rethrows the propagated exception if bit also set in
-      // exceptions().
+      // exceptions(). Must only be called within a catch handler.
       void
       _M_setstate(iostate __state)
       {
@@ -369,11 +373,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       char_type
       fill() const
       {
-	if (!_M_fill_init)
-	  {
-	    _M_fill = this->widen(' ');
-	    _M_fill_init = true;
-	  }
+	if (__builtin_expect(!_M_fill_init, false))
+	  return this->widen(' ');
 	return _M_fill;
       }
 
@@ -389,8 +390,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       char_type
       fill(char_type __ch)
       {
-	char_type __old = this->fill();
+	char_type __old = _M_fill;
 	_M_fill = __ch;
+	_M_fill_init = true;
 	return __old;
       }
 
@@ -404,7 +406,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  with this stream, calls that buffer's @c pubimbue(loc).
        *
        *  Additional l10n notes are at
-       *  http://gcc.gnu.org/onlinedocs/libstdc++/manual/localization.html
+       *  https://gcc.gnu.org/onlinedocs/libstdc++/manual/localization.html
       */
       locale
       imbue(const locale& __loc);
@@ -424,7 +426,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  @endcode
        *
        *  Additional l10n notes are at
-       *  http://gcc.gnu.org/onlinedocs/libstdc++/manual/localization.html
+       *  https://gcc.gnu.org/onlinedocs/libstdc++/manual/localization.html
       */
       char
       narrow(char_type __c, char __dfault) const
@@ -443,7 +445,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  @endcode
        *
        *  Additional l10n notes are at
-       *  http://gcc.gnu.org/onlinedocs/libstdc++/manual/localization.html
+       *  https://gcc.gnu.org/onlinedocs/libstdc++/manual/localization.html
       */
       char_type
       widen(char __c) const

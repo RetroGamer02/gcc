@@ -5,11 +5,10 @@
  *
  * Authors: Stewart Gordon
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_ntsecapi.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_ntsecapi.d)
  */
 module core.sys.windows.ntsecapi;
 version (Windows):
-@system:
 pragma(lib, "advapi32");
 
 version (ANSI) {} else version = Unicode;
@@ -667,7 +666,7 @@ struct POLICY_DOMAIN_KERBEROS_TICKET_INFO {
 }
 alias POLICY_DOMAIN_KERBEROS_TICKET_INFO* PPOLICY_DOMAIN_KERBEROS_TICKET_INFO;
 
-mixin DECLARE_HANDLE!("LSA_HANDLE");
+alias LSA_HANDLE = HANDLE;
 alias LSA_HANDLE* PLSA_HANDLE;
 
 struct TRUSTED_DOMAIN_NAME_INFO {

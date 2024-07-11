@@ -5,11 +5,10 @@
  *
  * Authors: Stewart Gordon
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_imagehlp.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_imagehlp.d)
  */
 module core.sys.windows.imagehlp;
 version (Windows):
-@system:
 
 version (ANSI) {} else version = Unicode;
 
@@ -276,7 +275,7 @@ struct IMAGEHLP_DUPLICATE_SYMBOL {
 }
 alias IMAGEHLP_DUPLICATE_SYMBOL* PIMAGEHLP_DUPLICATE_SYMBOL;
 
-mixin DECLARE_HANDLE!("DIGEST_HANDLE");
+alias DIGEST_HANDLE = HANDLE;
 
 extern (Windows) {
     alias BOOL function(IMAGEHLP_STATUS_REASON, LPSTR, LPSTR, ULONG_PTR, ULONG_PTR)

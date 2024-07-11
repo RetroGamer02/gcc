@@ -5,11 +5,10 @@
  *
  * Authors: Stewart Gordon
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_ole.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_ole.d)
  */
 module core.sys.windows.ole;
 version (Windows):
-@system:
 pragma(lib, "ole32");
 
 import core.sys.windows.windef, core.sys.windows.wingdi, core.sys.windows.uuid;
@@ -156,7 +155,7 @@ enum OLEOPT_UPDATE {
 // #endif
 }
 
-mixin DECLARE_HANDLE!("HOBJECT");
+alias HOBJECT = HANDLE;
 alias LONG_PTR LHSERVER, LHCLIENTDOC, LHSERVERDOC;
 
 struct OLEOBJECTVTBL {
@@ -258,7 +257,7 @@ struct OLESERVERVTBL {
     OLESTATUS function(LPOLESERVER) Release;
     OLESTATUS function(LPOLESERVER, HGLOBAL) Execute;
 }
-alias TypeDef!(OLESERVERVTBL*) LPOLESERVERVTBL;
+alias OLESERVERVTBL* LPOLESERVERVTBL;
 
 struct OLESERVER {
     LPOLESERVERVTBL lpvtbl;

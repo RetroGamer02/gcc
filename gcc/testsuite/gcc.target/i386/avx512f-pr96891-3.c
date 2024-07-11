@@ -1,9 +1,9 @@
 /* { dg-do compile } */
-/* { dg-options "-mavx512vl -mavx512bw -mavx512dq -O2 -masm=att" } */
+/* { dg-options "-mavx512vl -mavx512bw -mavx512dq -O2 -masm=att -mstv -mno-stackrealign" } */
 /* { dg-final { scan-assembler-not {not[bwlqd]\]} } } */
 /* { dg-final { scan-assembler-times {(?n)vpcmp[bwdq][ \t]*\$5} 4} } */
 /* { dg-final { scan-assembler-times {(?n)vpcmp[bwdq][ \t]*\$6} 4} } */
-/* { dg-final { scan-assembler-times {(?n)vpcmp[bwdq][ \t]*\$7} 4} } */
+/* { dg-final { scan-assembler-times {(?n)vpcmp[bwdq][ \t]*\$[37]} 4} } */
 /* { dg-final { scan-assembler-times {(?n)vcmpp[sd][ \t]*\$5} 2} } */
 /* { dg-final { scan-assembler-times {(?n)vcmpp[sd][ \t]*\$6} 2} } */
 /* { dg-final { scan-assembler-times {(?n)vcmpp[sd][ \t]*\$7} 2} } */

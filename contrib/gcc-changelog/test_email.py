@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+# Copyright (C) 2020-2024 Free Software Foundation, Inc.
 #
 # This file is part of GCC.
 #
@@ -14,7 +16,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GCC; see the file COPYING3.  If not see
-# <http://www.gnu.org/licenses/>.  */
+# <http://www.gnu.org/licenses/>.
 
 import os
 import tempfile
@@ -44,7 +46,7 @@ class TestGccChangelog(unittest.TestCase):
 
         filename = None
         patch_lines = []
-        with open(os.path.join(script_path, 'test_patches.txt')) as f:
+        with open(os.path.join(script_path, 'test_patches.txt'), newline='\n') as f:
             lines = f.read()
         for line in lines.split('\n'):
             if line.startswith('==='):
@@ -62,17 +64,17 @@ class TestGccChangelog(unittest.TestCase):
             assert t.endswith('.patch')
             os.remove(t)
 
-    def get_git_email(self, filename, strict=False):
+    def get_git_email(self, filename):
         with tempfile.NamedTemporaryFile(mode='w+', suffix='.patch',
                                          delete=False) as f:
             f.write('\n'.join(self.patches[filename]))
             self.temps.append(f.name)
-        return GitEmail(f.name, strict)
+        return GitEmail(f.name)
 
-    def from_patch_glob(self, name, strict=False):
+    def from_patch_glob(self, name):
         files = [f for f in self.patches.keys() if f.startswith(name)]
         assert len(files) == 1
-        return self.get_git_email(files[0], strict)
+        return self.get_git_email(files[0])
 
     def test_simple_patch_format(self):
         email = self.get_git_email('0577-aarch64-Add-an-and.patch')
@@ -247,7 +249,7 @@ class TestGccChangelog(unittest.TestCase):
         assert email.changelog_entries[1].prs == []
 
     def test_multiple_prs_not_added(self):
-        email = self.from_patch_glob('0001-Add-patch_are')
+        email = self.from_patch_glob('0002-Add-patch_are')
         assert not email.errors
         assert email.changelog_entries[0].prs == ['PR target/93492']
         assert email.changelog_entries[1].prs == ['PR target/12345']
@@ -255,18 +257,17 @@ class TestGccChangelog(unittest.TestCase):
         assert email.changelog_entries[2].folder == 'gcc/testsuite'
 
     def test_strict_mode(self):
-        email = self.from_patch_glob('0001-Add-patch_are',
-                                     True)
+        email = self.from_patch_glob('0001-Add-patch_are')
         msg = 'ChangeLog, DATESTAMP, BASE-VER and DEV-PHASE updates should ' \
               'be done separately from normal commits'
-        assert email.errors[0].message == msg
+        assert email.errors[0].message.startswith(msg)
 
     def test_strict_mode_normal_patch(self):
-        email = self.get_git_email('0001-Just-test-it.patch', True)
+        email = self.get_git_email('0001-Just-test-it.patch')
         assert not email.errors
 
     def test_strict_mode_datestamp_only(self):
-        email = self.get_git_email('0002-Bump-date.patch', True)
+        email = self.get_git_email('0002-Bump-date.patch')
         assert not email.errors
 
     def test_wrong_changelog_entry(self):
@@ -416,11 +417,65 @@ class TestGccChangelog(unittest.TestCase):
     def test_multiline_bad_parentheses(self):
         email = self.from_patch_glob('0002-Wrong-macro-changelog.patch')
         assert email.errors[0].message == 'bad parentheses wrapping'
+        assert email.errors[0].line == '	* config/i386/i386.md (*fix_trunc<mode>_i387_1,'
 
     def test_changelog_removal(self):
-        email = self.from_patch_glob('0001-ChangeLog-removal.patch', strict=True)
+        email = self.from_patch_glob('0001-ChangeLog-removal.patch')
         assert not email.errors
 
     def test_long_filenames(self):
         email = self.from_patch_glob('0001-long-filenames')
+        assert not email.errors
+
+    def test_multi_same_file(self):
+        email = self.from_patch_glob('0001-OpenMP-Fix-SIMT')
+        assert email.errors[0].message == 'same file specified multiple times'
+
+    def test_pr_only_in_subject(self):
+        email = self.from_patch_glob('0001-rs6000-Support-doubleword')
+        assert (email.errors[0].message ==
+                'PR 100085 in subject but not in changelog')
+
+    def test_wrong_pr_comp_in_subject(self):
+        email = self.from_patch_glob('pr-wrong-comp.patch')
+        assert email.errors[0].message == 'invalid PR component in subject'
+
+    def test_copyright_years(self):
+        email = self.from_patch_glob('copyright-years.patch')
+        assert not email.errors
+
+    def test_non_ascii_email(self):
+        email = self.from_patch_glob('non-ascii-email.patch')
+        assert (email.errors[0].message ==
+                'non-ASCII characters in git commit email address (jbglaw@ług-owl.de)')
+
+    def test_new_file_in_root_folder(self):
+        email = self.from_patch_glob('toplev-new-file.patch')
+        assert (email.errors[0].message ==
+                'new file in the top-level folder not mentioned in a ChangeLog')
+
+    def test_space_after_tab(self):
+        email = self.from_patch_glob('0001-Use-Value_Range-when-applying-inferred-ranges.patch')
+        assert (email.errors[0].message == 'extra space after tab')
+
+    def test_CR_in_patch(self):
+        email = self.from_patch_glob('0001-Add-M-character.patch')
+        assert (email.errors[0].message == 'cannot find a ChangeLog location in message')
+
+    def test_auto_add_file_1(self):
+        email = self.from_patch_glob('0001-Auto-Add-File.patch')
+        assert not email.errors
+        assert (len(email.warnings) == 1)
+        assert (email.warnings[0]
+                == "Auto-added new file 'libgomp/testsuite/libgomp.fortran/allocate-4.f90'")
+
+    def test_auto_add_file_2(self):
+        email = self.from_patch_glob('0002-Auto-Add-File.patch')
+        assert not email.errors
+        assert (len(email.warnings) == 2)
+        assert (email.warnings[0] == "Auto-added new file 'gcc/doc/gm2.texi'")
+        assert (email.warnings[1] == "Auto-added 2 new files in 'gcc/m2'")
+
+    def test_digit_in_PR_component(self):
+        email = self.from_patch_glob('modula-PR-component.patch')
         assert not email.errors

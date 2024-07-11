@@ -4,11 +4,10 @@
  * Translated from MinGW API for MS-Windows 3.12
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_commctrl.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_commctrl.d)
  */
 module core.sys.windows.commctrl;
 version (Windows):
-@system:
 
 version (ANSI) {} else version = Unicode;
 pragma(lib, "comctl32");
@@ -1741,8 +1740,8 @@ enum {
     I_CHILDRENCALLBACK = -1
 }
 
-mixin DECLARE_HANDLE!("HTREEITEM");
-mixin DECLARE_HANDLE!("HIMAGELIST");
+alias HTREEITEM = HANDLE;
+alias HIMAGELIST = HANDLE;
 
 version (Win64)
 {
@@ -4483,8 +4482,8 @@ static if (_WIN32_IE >= 0x400) {
     alias RBHITTESTINFO* LPRBHITTESTINFO;
 }
 
-mixin DECLARE_HANDLE!("HDSA");
-mixin DECLARE_HANDLE!("HDPA");
+alias HDSA = HANDLE;
+alias HDPA = HANDLE;
 
 version (Unicode) {
     alias HDITEMW HDITEM;

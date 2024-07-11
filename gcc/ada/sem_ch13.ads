@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,6 +23,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Local_Restrict;
 with Types; use Types;
 with Sem_Disp; use Sem_Disp;
 with Uintp; use Uintp;
@@ -78,12 +79,13 @@ package Sem_Ch13 is
    procedure Set_Enum_Esize (T : Entity_Id);
    --  This routine sets the Esize field for an enumeration type T, based
    --  on the current representation information available for T. Note that
-   --  the setting of the RM_Size field is not affected. This routine also
-   --  initializes the alignment field to zero.
+   --  the setting of the RM_Size field is not affected.
+
+   Unknown_Minimum_Size : constant Nonzero_Int := -1;
 
    function Minimum_Size
      (T      : Entity_Id;
-      Biased : Boolean := False) return Nat;
+      Biased : Boolean := False) return Int;
    --  Given an elementary type, determines the minimum number of bits required
    --  to represent all values of the type. This function may not be called
    --  with any other types. If the flag Biased is set True, then the minimum
@@ -96,7 +98,7 @@ package Sem_Ch13 is
    --  the type is already biased, then Minimum_Size returns the biased size,
    --  regardless of the setting of Biased. Also, fixed-point types are never
    --  biased in the current implementation. If the size is not known at
-   --  compile time, this function returns 0.
+   --  compile time, this function returns Unknown_Minimum_Size.
 
    procedure Check_Constant_Address_Clause (Expr : Node_Id; U_Ent : Entity_Id);
    --  Expr is an expression for an address clause. This procedure checks
@@ -115,26 +117,24 @@ package Sem_Ch13 is
       Siz    : Uint;
       Biased : out Boolean);
    --  Called when size Siz is specified for subtype T. This subprogram checks
-   --  that the size is appropriate, posting errors on node N as required.
-   --  This check is effective for elementary types and bit-packed arrays.
-   --  For other non-elementary types, a check is only made if an explicit
-   --  size has been given for the type (and the specified size must match).
-   --  The parameter Biased is set False if the size specified did not require
-   --  the use of biased representation, and True if biased representation
-   --  was required to meet the size requirement. Note that Biased is only
-   --  set if the type is not currently biased, but biasing it is the only
-   --  way to meet the requirement. If the type is currently biased, then
-   --  this biased size is used in the initial check, and Biased is False.
-   --  If the size is too small, and an error message is given, then both
-   --  Esize and RM_Size are reset to the allowed minimum value in T.
+   --  that the size is appropriate, posting errors on node N as required. This
+   --  check is effective for elementary types and bit-packed arrays. For
+   --  composite types, a check is only made if an explicit size has been given
+   --  for the type (and the specified size must match).  The parameter Biased
+   --  is set False if the size specified did not require the use of biased
+   --  representation, and True if biased representation was required to meet
+   --  the size requirement. Note that Biased is only set if the type is not
+   --  currently biased, but biasing it is the only way to meet the
+   --  requirement. If the type is currently biased, then this biased size is
+   --  used in the initial check, and Biased is False. For a Component_Size
+   --  clause, T is the component type.
 
    function Has_Compatible_Representation
-     (Target_Type, Operand_Type : Entity_Id) return Boolean;
-   --  Given two types, where the two types are related by possible derivation,
-   --  determines if the two types have compatible representation, or different
-   --  representations, requiring the special processing for representation
-   --  change. A False result is possible only for array, enumeration or
-   --  record types.
+     (Target_Typ, Operand_Typ : Entity_Id) return Boolean;
+   --  Given an explicit or implicit conversion from Operand_Typ to Target_Typ,
+   --  determine whether the types have compatible or different representation,
+   --  thus requiring special processing for the conversion in the latter case.
+   --  A False result is possible only for array, enumeration and record types.
 
    procedure Parse_Aspect_Aggregate
      (N                   : Node_Id;
@@ -146,6 +146,11 @@ package Sem_Ch13 is
    --  Utility to unpack the subprograms in an occurrence of aspect Aggregate;
    --  used to verify the structure of the aspect, and resolve and expand an
    --  aggregate for a container type that carries the aspect.
+
+   function Parse_Aspect_Local_Restrictions (Aspect_Spec : Node_Id)
+     return Local_Restrict.Local_Restriction_Set;
+   --  Utility to unpack the set of local restrictions specified in a
+   --  Local_Restrictions aspect specification.
 
    function Parse_Aspect_Stable_Properties
      (Aspect_Spec : Node_Id; Negated : out Boolean) return Subprogram_List;
@@ -307,22 +312,51 @@ package Sem_Ch13 is
    --  Quite an awkward approach, but this is an awkard requirement
 
    procedure Analyze_Aspects_At_Freeze_Point (E : Entity_Id);
-   --  Analyze all the delayed aspects for entity E at freezing point. This
-   --  includes dealing with inheriting delayed aspects from the parent type
-   --  in the case where a derived type is frozen.
+   --  Analyzes all the delayed aspects for entity E at the freeze point. Note
+   --  that this does not include dealing with inheriting delayed aspects from
+   --  the parent or base type in the case where a derived type or a subtype is
+   --  frozen. Callers should check that Has_Delayed_Aspects (E) is True before
+   --  calling this routine.
 
-   procedure Check_Aspect_At_Freeze_Point (ASN : Node_Id);
-   --  Performs the processing described above at the freeze point, ASN is the
-   --  N_Aspect_Specification node for the aspect.
-
-   procedure Check_Aspect_At_End_Of_Declarations (ASN : Node_Id);
+   procedure Check_Aspects_At_End_Of_Declarations (E : Entity_Id);
    --  Performs the processing described above at the freeze all point, and
    --  issues appropriate error messages if the visibility has indeed changed.
-   --  Again, ASN is the N_Aspect_Specification node for the aspect.
+   --  Callers should check that Has_Delayed_Aspects (E) is True before calling
+   --  this routine.
 
    procedure Inherit_Aspects_At_Freeze_Point (Typ : Entity_Id);
    --  Given an entity Typ that denotes a derived type or a subtype, this
    --  routine performs the inheritance of aspects at the freeze point.
+
+   --  ??? Note that, for now, just a limited number of representation aspects
+   --  have been inherited here so far. Many of them are still inherited in
+   --  Sem_Ch3 and need to be dealt with. Here is a non-exhaustive list of
+   --  aspects that likely also need to be moved to this routine: Alignment,
+   --  Component_Alignment, Component_Size, Machine_Radix, Object_Size, Pack,
+   --  Predicates, Preelaborable_Initialization, Size and Small.
+
+   procedure Inherit_Delayed_Rep_Aspects (Typ : Entity_Id);
+   --  As discussed in the spec of Aspects (see Aspect_Delay declaration),
+   --  a derived type can inherit aspects from its parent which have been
+   --  specified at the time of the derivation using an aspect, as in:
+   --
+   --    type A is range 1 .. 10
+   --      with Size => Not_Defined_Yet;
+   --    ..
+   --    type B is new A;
+   --    ..
+   --    Not_Defined_Yet : constant := 64;
+   --
+   --  In this example, the Size of A is considered to be specified prior
+   --  to the derivation, and thus inherited, even though the value is not
+   --  known at the time of derivation. To deal with this, we use two entity
+   --  flags. The flag Has_Derived_Rep_Aspects is set in the parent type (A
+   --  here), and then the flag May_Inherit_Delayed_Rep_Aspects is set in
+   --  the derived type (B here). If this flag is set when the derived type
+   --  is frozen, then this procedure is called to ensure proper inheritance
+   --  of all delayed aspects from the parent type.
+
+   --  ??? Obviously we ought not to have two mechanisms to do the same thing
 
    procedure Resolve_Aspect_Expressions (E : Entity_Id);
    --  Name resolution of an aspect expression happens at the end of the

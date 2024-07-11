@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -47,27 +47,9 @@ package body Ch13 is
       Scan_State : Saved_Scan_State;
       Result     : Boolean;
 
-      function Possible_Misspelled_Aspect return Boolean;
-      --  Returns True, if Token_Name is a misspelling of some aspect name
-
       function With_Present return Boolean;
       --  Returns True if WITH is present, indicating presence of aspect
       --  specifications. Also allows incorrect use of WHEN in place of WITH.
-
-      --------------------------------
-      -- Possible_Misspelled_Aspect --
-      --------------------------------
-
-      function Possible_Misspelled_Aspect return Boolean is
-      begin
-         for J in Aspect_Id_Exclude_No_Aspect loop
-            if Is_Bad_Spelling_Of (Token_Name, Aspect_Names (J)) then
-               return True;
-            end if;
-         end loop;
-
-         return False;
-      end Possible_Misspelled_Aspect;
 
       ------------------
       -- With_Present --
@@ -89,7 +71,7 @@ package body Ch13 is
                Scan; -- past WHEN
 
                if Token = Tok_Identifier
-                 and then Get_Aspect_Id (Token_Name) /= No_Aspect
+                 and then Is_Aspect_Id (Token_Name)
                then
                   Error_Msg_SC ("WHEN should be WITH");
                   Restore_Scan_State (Scan_State);
@@ -149,8 +131,8 @@ package body Ch13 is
       --  specification is ill-formed.
 
       elsif not Strict then
-         if Get_Aspect_Id (Token_Name) /= No_Aspect
-           or else Possible_Misspelled_Aspect
+         if Is_Aspect_Id (Token_Name)
+           or else Aspect_Spell_Check (Token_Name)
          then
             Result := True;
          else
@@ -164,7 +146,7 @@ package body Ch13 is
       --  is still an aspect specification so we give an appropriate message.
 
       else
-         if Get_Aspect_Id (Token_Name) = No_Aspect then
+         if not Is_Aspect_Id (Token_Name) then
             Result := False;
 
          else
@@ -212,20 +194,16 @@ package body Ch13 is
    -- Get_Aspect_Specifications --
    -------------------------------
 
-   function Get_Aspect_Specifications
-     (Semicolon : Boolean := True) return List_Id
-   is
+   function Get_Aspect_Specifications (Semicolon : Boolean) return List_Id is
       A_Id    : Aspect_Id;
       Aspect  : Node_Id;
-      Aspects : List_Id;
+      Aspects : List_Id := Empty_List;
       OK      : Boolean;
 
       Opt : Boolean;
       --  True if current aspect takes an optional argument
 
    begin
-      Aspects := Empty_List;
-
       --  Check if aspect specification present
 
       if not Aspect_Specifications_Present then
@@ -271,21 +249,10 @@ package body Ch13 is
             begin
                Check_Restriction (Msg_Issued, No_Unrecognized_Aspects, Aspect);
                if not Msg_Issued then
-                  Error_Msg_Warn := not Debug_Flag_2;
-                  Error_Msg_N
-                    ("<<& is not a valid aspect identifier", Token_Node);
+                  Bad_Aspect (Token_Node, Token_Name, not Debug_Flag_2);
+
                   OK := False;
 
-                  --  Check bad spelling
-
-                  for J in Aspect_Id_Exclude_No_Aspect loop
-                     if Is_Bad_Spelling_Of (Token_Name, Aspect_Names (J)) then
-                        Error_Msg_Name_1 := Aspect_Names (J);
-                        Error_Msg_N -- CODEFIX
-                          ("\<<possible misspelling of%", Token_Node);
-                        exit;
-                     end if;
-                  end loop;
                end if;
             end;
 
@@ -365,7 +332,7 @@ package body Ch13 is
             --  Check for a missing aspect definition. Aspects with optional
             --  definitions are not considered.
 
-            if Token = Tok_Comma or else Token = Tok_Semicolon then
+            if Token in Tok_Comma | Tok_Semicolon then
                if not Opt then
                   Error_Msg_Node_1 := Identifier (Aspect);
                   Error_Msg_AP ("aspect& requires an aspect definition");
@@ -396,7 +363,7 @@ package body Ch13 is
                --  aspect Depends, Global, Refined_Depends, Refined_Global
                --  or Refined_State lacks enclosing parentheses.
 
-               if Token /= Tok_Left_Paren and then Token /= Tok_Null then
+               if Token not in Tok_Left_Paren | Tok_Null then
 
                   --  [Refined_]Depends
 
@@ -456,7 +423,7 @@ package body Ch13 is
                            --         Aspect => ...
 
                            if Token = Tok_Identifier
-                             and then Get_Aspect_Id (Token_Name) /= No_Aspect
+                             and then Is_Aspect_Id (Token_Name)
                            then
                               Restore_Scan_State (Scan_State);
 
@@ -588,7 +555,7 @@ package body Ch13 is
          --  and proceed to the next aspect.
 
          elsif Token = Tok_Identifier
-           and then Get_Aspect_Id (Token_Name) /= No_Aspect
+           and then Is_Aspect_Id (Token_Name)
          then
             declare
                Scan_State : Saved_Scan_State;
@@ -600,7 +567,7 @@ package body Ch13 is
                --  Attempt to detect ' or => following a potential aspect
                --  mark.
 
-               if Token = Tok_Apostrophe or else Token = Tok_Arrow then
+               if Token in Tok_Apostrophe | Tok_Arrow then
                   Restore_Scan_State (Scan_State);
                   Error_Msg_AP -- CODEFIX
                     ("|missing "",""");
@@ -626,13 +593,13 @@ package body Ch13 is
                Scan; -- past semicolon
 
                if Token = Tok_Identifier
-                 and then Get_Aspect_Id (Token_Name) /= No_Aspect
+                 and then Is_Aspect_Id (Token_Name)
                then
                   Scan; -- past identifier
 
                   --  Attempt to detect ' or => following potential aspect mark
 
-                  if Token = Tok_Apostrophe or else Token = Tok_Arrow then
+                  if Token in Tok_Apostrophe | Tok_Arrow then
                      Restore_Scan_State (Scan_State);
                      Error_Msg_SC -- CODEFIX
                        ("|"";"" should be "",""");
@@ -938,25 +905,13 @@ package body Ch13 is
 
    procedure P_Aspect_Specifications
      (Decl      : Node_Id;
-      Semicolon : Boolean := True)
+      Semicolon : Boolean)
    is
-      Aspects : List_Id;
-      Ptr     : Source_Ptr;
+      Ptr     : constant Source_Ptr := Token_Ptr;
+      Aspects : constant List_Id := Get_Aspect_Specifications (Semicolon);
 
    begin
-      --  Aspect Specification is present
-
-      Ptr := Token_Ptr;
-
-      --  Here we have an aspect specification to scan, note that we don't
-      --  set the flag till later, because it may turn out that we have no
-      --  valid aspects in the list.
-
-      Aspects := Get_Aspect_Specifications (Semicolon);
-
-      --  Here if aspects present
-
-      if Is_Non_Empty_List (Aspects) then
+      if Is_Non_Empty_List (Aspects) then -- Aspects present?
 
          --  If Decl is Empty, we just ignore the aspects (the caller in this
          --  case has always issued an appropriate error message).
@@ -964,7 +919,7 @@ package body Ch13 is
          if Decl = Empty then
             null;
 
-         --  If Decl is Error, we ignore the aspects, and issue a message
+         --  Cases where we issue an error
 
          elsif Decl = Error
            or else not Permits_Aspect_Specifications (Decl)
@@ -974,7 +929,6 @@ package body Ch13 is
          --  Here aspects are allowed, and we store them
 
          else
-            Set_Parent (Aspects, Decl);
             Set_Aspect_Specifications (Decl, Aspects);
          end if;
       end if;

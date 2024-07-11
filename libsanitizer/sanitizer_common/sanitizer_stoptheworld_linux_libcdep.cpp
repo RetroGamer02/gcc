@@ -16,7 +16,7 @@
 #if SANITIZER_LINUX &&                                                   \
     (defined(__x86_64__) || defined(__mips__) || defined(__aarch64__) || \
      defined(__powerpc64__) || defined(__s390__) || defined(__i386__) || \
-     defined(__arm__) || SANITIZER_RISCV64)
+     defined(__arm__) || SANITIZER_RISCV64 || SANITIZER_LOONGARCH64)
 
 #include "sanitizer_stoptheworld.h"
 
@@ -31,7 +31,8 @@
 #include <sys/types.h> // for pid_t
 #include <sys/uio.h> // for iovec
 #include <elf.h> // for NT_PRSTATUS
-#if (defined(__aarch64__) || SANITIZER_RISCV64) && !SANITIZER_ANDROID
+#if (defined(__aarch64__) || SANITIZER_RISCV64 || SANITIZER_LOONGARCH64) && \
+     !SANITIZER_ANDROID
 // GLIBC 2.20+ sys/user does not include asm/ptrace.h
 # include <asm/ptrace.h>
 #endif
@@ -108,7 +109,7 @@ struct TracerThreadArgument {
   void *callback_argument;
   // The tracer thread waits on this mutex while the parent finishes its
   // preparations.
-  BlockingMutex mutex;
+  Mutex mutex;
   // Tracer thread signals its completion by setting done.
   atomic_uintptr_t done;
   uptr parent_pid;
@@ -490,6 +491,9 @@ typedef user_regs_struct regs_struct;
 #ifndef NT_X86_XSTATE
 #define NT_X86_XSTATE 0x202
 #endif
+#ifndef PTRACE_GETREGSET
+#define PTRACE_GETREGSET 0x4204
+#endif
 // Compiler may use FP registers to store pointers.
 static constexpr uptr kExtraRegs[] = {NT_X86_XSTATE, NT_FPREGSET};
 
@@ -511,8 +515,16 @@ typedef struct user_pt_regs regs_struct;
 static constexpr uptr kExtraRegs[] = {0};
 #define ARCH_IOVEC_FOR_GETREGSET
 
+#elif defined(__loongarch__)
+typedef struct user_pt_regs regs_struct;
+#define REG_SP regs[3]
+static constexpr uptr kExtraRegs[] = {0};
+#define ARCH_IOVEC_FOR_GETREGSET
+
 #elif SANITIZER_RISCV64
 typedef struct user_regs_struct regs_struct;
+// sys/ucontext.h already defines REG_SP as 2. Undefine it first.
+#undef REG_SP
 #define REG_SP sp
 static constexpr uptr kExtraRegs[] = {0};
 #define ARCH_IOVEC_FOR_GETREGSET
@@ -553,7 +565,7 @@ PtraceRegistersStatus SuspendedThreadsListLinux::GetRegistersAndSP(
   constexpr uptr uptr_sz = sizeof(uptr);
   int pterrno;
 #ifdef ARCH_IOVEC_FOR_GETREGSET
-  auto append = [&](uptr regset) {
+  auto AppendF = [&](uptr regset) {
     uptr size = buffer->size();
     // NT_X86_XSTATE requires 64bit alignment.
     uptr size_up = RoundUpTo(size, 8 / uptr_sz);
@@ -584,11 +596,11 @@ PtraceRegistersStatus SuspendedThreadsListLinux::GetRegistersAndSP(
   };
 
   buffer->clear();
-  bool fail = !append(NT_PRSTATUS);
+  bool fail = !AppendF(NT_PRSTATUS);
   if (!fail) {
     // Accept the first available and do not report errors.
     for (uptr regs : kExtraRegs)
-      if (regs && append(regs))
+      if (regs && AppendF(regs))
         break;
   }
 #else
@@ -616,3 +628,4 @@ PtraceRegistersStatus SuspendedThreadsListLinux::GetRegistersAndSP(
 #endif  // SANITIZER_LINUX && (defined(__x86_64__) || defined(__mips__)
         // || defined(__aarch64__) || defined(__powerpc64__)
         // || defined(__s390__) || defined(__i386__) || defined(__arm__)
+        // || SANITIZER_LOONGARCH64

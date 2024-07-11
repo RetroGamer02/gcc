@@ -1,5 +1,5 @@
 /* Callgraph handling code.
-   Copyright (C) 2003-2021 Free Software Foundation, Inc.
+   Copyright (C) 2003-2024 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -117,6 +117,7 @@ public:
       refuse_visibility_changes (false), externally_visible (false),
       no_reorder (false), force_output (false), forced_by_abi (false),
       unique_name (false), implicit_section (false), body_removed (false),
+      semantic_interposition (flag_semantic_interposition),
       used_from_other_partition (false), in_other_partition (false),
       address_taken (false), in_init_priority_hash (false),
       need_lto_streaming (false), offloadable (false), ifunc_resolver (false),
@@ -150,6 +151,9 @@ public:
 
   /* Remove symbol from symbol table.  */
   void remove (void);
+
+  /* Undo any definition or use of the symbol.  */
+  void reset (bool preserve_comdat_group = false);
 
   /* Dump symtab node to F.  */
   void dump (FILE *f);
@@ -192,10 +196,11 @@ public:
   /* Clone reference REF to this symtab_node and set its stmt to STMT.  */
   ipa_ref *clone_reference (ipa_ref *ref, gimple *stmt);
 
-  /* Find the structure describing a reference to REFERRED_NODE
-     and associated with statement STMT.  */
+  /* Find the structure describing a reference to REFERRED_NODE of USE_TYPE and
+     associated with statement STMT or LTO_STMT_UID.  */
   ipa_ref *find_reference (symtab_node *referred_node, gimple *stmt,
-			   unsigned int lto_stmt_uid);
+			   unsigned int lto_stmt_uid,
+			   enum ipa_ref_use use_type);
 
   /* Remove all references that are associated with statement STMT.  */
   void remove_stmt_references (gimple *stmt);
@@ -404,7 +409,8 @@ public:
   inline bool
   can_be_discarded_p (void)
   {
-    return (DECL_EXTERNAL (decl)
+    return ((DECL_EXTERNAL (decl)
+	     && !in_other_partition)
 	    || ((get_comdat_group ()
 		 || DECL_COMMON (decl)
 		 || (DECL_SECTION_NAME (decl) && DECL_WEAK (decl)))
@@ -473,6 +479,9 @@ public:
      Return NULL if there's no such node.  */
   static symtab_node *get_for_asmname (const_tree asmname);
 
+  /* Check symbol table for callees of IFUNC resolvers.  */
+  static void check_ifunc_callee_symtab_nodes (void);
+
   /* Verify symbol table for internal consistency.  */
   static DEBUG_FUNCTION void verify_symtab_nodes (void);
 
@@ -502,7 +511,7 @@ public:
 	 declarations). In this case the assembler names compare via
 	 assembler_names_equal_p and weakref is false
        - aliases that are renamed at a time being output to final file
-	 by varasm.c. For those DECL_ASSEMBLER_NAME have
+	 by varasm.cc. For those DECL_ASSEMBLER_NAME have
 	 IDENTIFIER_TRANSPARENT_ALIAS set and thus also their assembler
 	 name must be unique.
 	 Weakrefs belong to this category when we target assembler without
@@ -556,6 +565,8 @@ public:
   /* True when body and other characteristics have been removed by
      symtab_remove_unreachable_nodes. */
   unsigned body_removed : 1;
+  /* True when symbol should comply to -fsemantic-interposition flag.  */
+  unsigned semantic_interposition : 1;
 
   /*** WHOPR Partitioning flags.
        These flags are used at ltrans stage when only part of the callgraph is
@@ -624,7 +635,7 @@ public:
   /* File stream where this node is being written to.  */
   struct lto_file_decl_data * lto_file_data;
 
-  PTR GTY ((skip)) aux;
+  void *GTY ((skip)) aux;
 
   /* Comdat group the symbol is in.  Can be private if GGC allowed that.  */
   tree x_comdat_group;
@@ -700,6 +711,10 @@ struct GTY(()) ipa_replace_map
   tree new_tree;
   /* Parameter number to replace, when old_tree is NULL.  */
   int parm_num;
+  /* Set if the newly added reference should not be an address one, but a load
+     one from the operand of the ADDR_EXPR in NEW_TREE.  This is for cases when
+     the corresponding parameter p is used only as *p.  */
+  unsigned force_load_ref : 1;
 };
 
 enum cgraph_simd_clone_arg_type
@@ -756,14 +771,14 @@ struct GTY(()) cgraph_simd_clone_arg {
      variable), uniform, or vector.  */
   enum cgraph_simd_clone_arg_type arg_type;
 
+  /* Variable alignment if available, otherwise 0.  */
+  unsigned int alignment;
+
   /* For arg_type SIMD_CLONE_ARG_TYPE_LINEAR_*CONSTANT_STEP this is
      the constant linear step, if arg_type is
      SIMD_CLONE_ARG_TYPE_LINEAR_*VARIABLE_STEP, this is index of
      the uniform argument holding the step, otherwise 0.  */
   HOST_WIDE_INT linear_step;
-
-  /* Variable alignment if available, otherwise 0.  */
-  unsigned int alignment;
 };
 
 /* Specific data for a SIMD function clone.  */
@@ -883,7 +898,9 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
       versionable (false), can_change_signature (false),
       redefined_extern_inline (false), tm_may_enter_irr (false),
       ipcp_clone (false), declare_variant_alt (false),
-      calls_declare_variant_alt (false), m_uid (uid), m_summary_id (-1)
+      calls_declare_variant_alt (false), gc_candidate (false),
+      called_by_ifunc_resolver (false),
+      m_uid (uid), m_summary_id (-1)
   {}
 
   /* Remove the node from cgraph and all inline clones inlined into it.
@@ -949,7 +966,7 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
   /* Create callgraph node clone with new declaration.  The actual body will be
      copied later at compilation stage.  The name of the new clone will be
      constructed from the name of the original node, SUFFIX and NUM_SUFFIX.  */
-  cgraph_node *create_virtual_clone (vec<cgraph_edge *> redirect_callers,
+  cgraph_node *create_virtual_clone (const vec<cgraph_edge *> &redirect_callers,
 				     vec<ipa_replace_map *, va_gc> *tree_map,
 				     ipa_param_adjustments *param_adjustments,
 				     const char * suffix, unsigned num_suffix);
@@ -1002,13 +1019,16 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
      that will promote value of the attribute DECL_FUNCTION_SPECIFIC_TARGET
      of the declaration.
 
+     If VERSION_DECL is set true, use clone_function_name_numbered for the
+     function clone.  Otherwise, use clone_function_name.
+
      Return the new version's cgraph node.  */
   cgraph_node *create_version_clone_with_body
     (vec<cgraph_edge *> redirect_callers,
      vec<ipa_replace_map *, va_gc> *tree_map,
      ipa_param_adjustments *param_adjustments,
      bitmap bbs_to_copy, basic_block new_entry_block, const char *clone_name,
-     tree target_attributes = NULL_TREE);
+     tree target_attributes = NULL_TREE, bool version_decl = true);
 
   /* Insert a new cgraph_function_version_info node into cgraph_fnver_htab
      corresponding to cgraph_node.  */
@@ -1054,14 +1074,6 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
   /* Expand function specified by node.  */
   void expand (void);
 
-  /* As an GCC extension we allow redefinition of the function.  The
-     semantics when both copies of bodies differ is not well defined.
-     We replace the old body with new body so in unit at a time mode
-     we always use new body, while in normal mode we may end up with
-     old body inlined into some functions and new body expanded and
-     inlined in others.  */
-  void reset (void);
-
   /* Creates a wrapper from cgraph_node to TARGET node. Thunk is used for this
      kind of wrapper method.  */
   void create_wrapper (cgraph_node *target);
@@ -1095,7 +1107,7 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
   /* Release memory used to represent body of function.
      Use this only for functions that are released before being translated to
      target code (i.e. RTL).  Functions that are compiled to RTL and beyond
-     are free'd in final.c via free_after_compilation().  */
+     are free'd in final.cc via free_after_compilation().  */
   void release_body (bool keep_arguments = false);
 
   /* Return the DECL_STRUCT_FUNCTION of the function.  */
@@ -1139,7 +1151,7 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
 
   /* Collect all callers of cgraph_node and its aliases that are known to lead
      to NODE (i.e. are not overwritable) and that are not thunks.  */
-  vec<cgraph_edge *> collect_callers (void);
+  auto_vec<cgraph_edge *> collect_callers (void);
 
   /* Remove all callers from the node.  */
   void remove_callers (void);
@@ -1159,6 +1171,10 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
      if any.  */
   bool set_malloc_flag (bool malloc_p);
 
+  /* SET TREE_THIS_VOLATILE on cgraph_node's decl and on aliases of the node
+     if any.  */
+  bool set_noreturn_flag (bool noreturn_p);
+
   /* If SET_CONST is true, mark function, aliases and thunks to be ECF_CONST.
     If SET_CONST if false, clear the flag.
 
@@ -1177,6 +1193,10 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
      Return true if any change was done. */
 
   bool set_pure_flag (bool pure, bool looping);
+
+  /* Add attribute ATTR to cgraph_node's decl and on aliases of the node
+     if any.  */
+  bool add_detected_attribute (const char *attr);
 
   /* Call callback on function and aliases associated to the function.
      When INCLUDE_OVERWRITABLE is false, overwritable aliases and thunks are
@@ -1400,7 +1420,7 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
 
   struct cgraph_rtl_info *rtl;
 
-  /* Expected number of executions: calculated in profile.c.  */
+  /* Expected number of executions: calculated in profile.cc.  */
   profile_count count;
   /* How to scale counts at materialization time; used to merge
      LTO units with different number of profile runs.  */
@@ -1475,6 +1495,12 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
   unsigned declare_variant_alt : 1;
   /* True if the function calls declare_variant_alt functions.  */
   unsigned calls_declare_variant_alt : 1;
+  /* True if the function should only be emitted if it is used.  This flag
+     is set for local SIMD clones when they are created and cleared if the
+     vectorizer uses them.  */
+  unsigned gc_candidate : 1;
+  /* Set if the function is called by an IFUNC resolver.  */
+  unsigned called_by_ifunc_resolver : 1;
 
 private:
   /* Unique id of the node.  */
@@ -1817,9 +1843,16 @@ public:
      speculative indirect call, remove "speculative" of the indirect call and
      also redirect stmt to it's final direct target.
 
+     When called from within tree-inline, KILLED_SSAs has to contain the
+     pointer to killed_new_ssa_names within the copy_body_data structure and
+     SSAs discovered to be useless (if LHS is removed) will be added to it,
+     otherwise it needs to be NULL.
+
      It is up to caller to iteratively transform each "speculative"
      direct call as appropriate.  */
-  static gimple *redirect_call_stmt_to_callee (cgraph_edge *e);
+  static gimple *redirect_call_stmt_to_callee (cgraph_edge *e,
+					       hash_set <tree>
+					       *killed_ssas = nullptr);
 
   /* Create clone of edge in the node N represented
      by CALL_EXPR the callgraph.  */
@@ -1868,7 +1901,7 @@ public:
   /* Return num_speculative_targets of this edge.  */
   int num_speculative_call_targets_p (void);
 
-  /* Expected number of executions: calculated in profile.c.  */
+  /* Expected number of executions: calculated in profile.cc.  */
   profile_count count;
   cgraph_node *caller;
   cgraph_node *callee;
@@ -1880,7 +1913,7 @@ public:
   /* Additional information about an indirect call.  Not cleared when an edge
      becomes direct.  */
   cgraph_indirect_call_info *indirect_info;
-  PTR GTY ((skip (""))) aux;
+  void *GTY ((skip (""))) aux;
   /* When equal to CIF_OK, inline this call.  Otherwise, points to the
      explanation why function was not inlined.  */
   enum cgraph_inline_failed_t inline_failed;
@@ -2552,8 +2585,8 @@ asmname_hasher::equal (symtab_node *n, const_tree t)
   return symbol_table::decl_assembler_name_equal (n->decl, t);
 }
 
-/* In cgraph.c  */
-void cgraph_c_finalize (void);
+/* In cgraph.cc  */
+void cgraph_cc_finalize (void);
 void release_function_body (tree);
 cgraph_indirect_call_info *cgraph_allocate_init_indirect_info (void);
 
@@ -2563,8 +2596,8 @@ bool cgraph_function_possibly_inlined_p (tree);
 const char* cgraph_inline_failed_string (cgraph_inline_failed_t);
 cgraph_inline_failed_type_t cgraph_inline_failed_type (cgraph_inline_failed_t);
 
-/* In cgraphunit.c  */
-void cgraphunit_c_finalize (void);
+/* In cgraphunit.cc  */
+void cgraphunit_cc_finalize (void);
 int tp_first_run_node_cmp (const void *pa, const void *pb);
 
 /* In symtab-thunks.cc  */
@@ -2576,7 +2609,7 @@ basic_block init_lowered_empty_function (tree, bool, profile_count);
 
 tree thunk_adjust (gimple_stmt_iterator *, tree, bool, HOST_WIDE_INT, tree,
 		   HOST_WIDE_INT);
-/* In cgraphclones.c  */
+/* In cgraphclones.cc  */
 
 tree clone_function_name_numbered (const char *name, const char *suffix);
 tree clone_function_name_numbered (tree decl, const char *suffix);
@@ -2593,18 +2626,18 @@ void tree_function_versioning (tree, tree, vec<ipa_replace_map *, va_gc> *,
 void dump_callgraph_transformation (const cgraph_node *original,
 				    const cgraph_node *clone,
 				    const char *suffix);
-/* In cgraphbuild.c  */
+/* In cgraphbuild.cc  */
 int compute_call_stmt_bb_frequency (tree, basic_block bb);
 void record_references_in_initializer (tree, bool);
 
-/* In ipa.c  */
+/* In ipa.cc  */
 void cgraph_build_static_cdtor (char which, tree body, int priority);
 bool ipa_discover_variable_flags (void);
 
-/* In varpool.c  */
+/* In varpool.cc  */
 tree ctor_for_folding (tree);
 
-/* In ipa-inline-analysis.c  */
+/* In ipa-inline-analysis.cc  */
 void initialize_inline_failed (struct cgraph_edge *);
 bool speculation_useful_p (struct cgraph_edge *e, bool anticipate_inlining);
 
@@ -2630,11 +2663,11 @@ symtab_node::real_symbol_p (void)
 /* Return true if DECL should have entry in symbol table if used.
    Those are functions and static & external variables.  */
 
-static inline bool
+inline bool
 decl_in_symtab_p (const_tree decl)
 {
   return (TREE_CODE (decl) == FUNCTION_DECL
-          || (TREE_CODE (decl) == VAR_DECL
+	  || (VAR_P (decl)
 	      && (TREE_STATIC (decl) || DECL_EXTERNAL (decl))));
 }
 
@@ -3303,7 +3336,7 @@ cgraph_edge::frequency ()
 
 
 /* Return true if the TM_CLONE bit is set for a given FNDECL.  */
-static inline bool
+inline bool
 decl_is_tm_clone (const_tree fndecl)
 {
   cgraph_node *n = cgraph_node::get (fndecl);
@@ -3343,7 +3376,7 @@ cgraph_node::optimize_for_size_p (void)
 inline symtab_node *
 symtab_node::get_create (tree node)
 {
-  if (TREE_CODE (node) == VAR_DECL)
+  if (VAR_P (node))
     return varpool_node::get_create (node);
   else
     return cgraph_node::get_create (node);
@@ -3519,7 +3552,7 @@ ipa_polymorphic_call_context::useless_p () const
    the name documents the intent.  We require that no GC can occur
    within the fprintf call.  */
 
-static inline const char *
+inline const char *
 xstrdup_for_dump (const char *transient_str)
 {
   return ggc_strdup (transient_str);

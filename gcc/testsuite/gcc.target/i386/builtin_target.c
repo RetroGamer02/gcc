@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include "cpuid.h"
 #define CHECK___builtin_cpu_is(cpu) assert (__builtin_cpu_is (cpu))
+#define CHECK___builtin_cpu_supports(isa) \
+  assert (__builtin_cpu_supports (isa))
 #define gcc_assert(a) assert (a)
 #define gcc_unreachable() abort ()
 #define inline
@@ -87,11 +89,12 @@ quick_check ()
 
   assert (__builtin_cpu_supports ("avx512f") >= 0);
 
-  assert (__builtin_cpu_supports ("avx5124vnniw") >= 0);
-
-  assert (__builtin_cpu_supports ("avx5124fmaps") >= 0);
-
   assert (__builtin_cpu_supports ("avx512vpopcntdq") >= 0);
+
+  assert (__builtin_cpu_supports ("x86-64") >= 0);
+  assert (__builtin_cpu_supports ("x86-64-v2") >= 0);
+  assert (__builtin_cpu_supports ("x86-64-v3") >= 0);
+  assert (__builtin_cpu_supports ("x86-64-v4") >= 0);
 
   /* Check CPU type.  */
   assert (__builtin_cpu_is ("amd") >= 0);

@@ -1,6 +1,6 @@
 // <max_size_type.h> -*- C++ -*-
 
-// Copyright (C) 2019-2021 Free Software Foundation, Inc.
+// Copyright (C) 2019-2024 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -417,6 +417,7 @@ namespace ranges
 #endif
 
 #if __SIZEOF_INT128__
+      __extension__
       using __rep = unsigned __int128;
 #else
       using __rep = unsigned long long;
@@ -559,7 +560,8 @@ namespace ranges
 	// Arithmetic right shift.
 	const auto __msb = _M_rep._M_msb;
 	_M_rep >>= __r._M_rep;
-	_M_rep._M_msb |= __msb;
+	if (__msb)
+	  _M_rep |= ~(__max_size_type(-1) >> __r._M_rep);
 	return *this;
       }
 
@@ -770,14 +772,8 @@ namespace ranges
       static constexpr bool is_signed = false;
       static constexpr bool is_integer = true;
       static constexpr bool is_exact = true;
-#if __SIZEOF_INT128__
-      static_assert(same_as<_Sp::__rep, unsigned __int128>);
-      static constexpr int digits = 129;
-#else
-      static_assert(same_as<_Sp::__rep, unsigned long long>);
       static constexpr int digits
-	= __gnu_cxx::__int_traits<unsigned long long>::__digits + 1;
-#endif
+	= __gnu_cxx::__int_traits<_Sp::__rep>::__digits + 1;
       static constexpr int digits10
 	= static_cast<int>(digits * numbers::ln2 / numbers::ln10);
 

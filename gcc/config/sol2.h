@@ -1,6 +1,6 @@
 /* Operating system specific defines to be used when targeting GCC for any
    Solaris 2 system.
-   Copyright (C) 2002-2021 Free Software Foundation, Inc.
+   Copyright (C) 2002-2024 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -161,7 +161,6 @@ along with GCC; see the file COPYING3.  If not see
 #undef LIB_SPEC
 #define LIB_SPEC \
   "%{!symbolic:\
-     %{pthreads|pthread:-lpthread} \
      %{p|pg:-ldl} -lc}"
 
 #ifndef CROSS_DIRECTORY_STRUCTURE
@@ -205,7 +204,7 @@ along with GCC; see the file COPYING3.  If not see
      %{ansi|std=c*|std=iso9899\\:199409:values-Xc.o%s; :values-Xa.o%s} \
      %{std=c90|std=gnu90:values-xpg4.o%s; :values-xpg6.o%s}}}"
 
-#if defined(HAVE_LD_PIE) && defined(HAVE_SOLARIS_CRTS)
+#if defined(HAVE_LD_PIE)
 #define STARTFILE_CRTBEGIN_SPEC "%{static:crtbegin.o%s; \
 				   shared|" PIE_SPEC ":crtbeginS.o%s; \
 				   :crtbegin.o%s}"
@@ -256,7 +255,7 @@ along with GCC; see the file COPYING3.  If not see
   " %{!shared:libasan_preinit%O%s} \
     %{static-libasan:%{!shared: -Bstatic "\
     LD_WHOLE_ARCHIVE_OPTION " -lasan " LD_NO_WHOLE_ARCHIVE_OPTION \
-    "-Bdynamic}}%{!static-libasan:-lasan}"
+    " -Bdynamic}}%{!static-libasan:-z now -lasan}"
 
 /* Error out on -fsanitize=thread|leak.  */
 #define LIBTSAN_EARLY_SPEC "\
@@ -266,7 +265,6 @@ along with GCC; see the file COPYING3.  If not see
 
 /* We don't use the standard svr4 STARTFILE_SPEC because it's wrong for us.  */
 #undef STARTFILE_SPEC
-#ifdef HAVE_SOLARIS_CRTS
 /* Since Solaris 11.4, the OS delivers crt1.o, crti.o, and crtn.o, with a hook
    for compiler-dependent stuff like profile handling.  */
 #define STARTFILE_SPEC "%{!shared:%{!symbolic: \
@@ -276,16 +274,8 @@ along with GCC; see the file COPYING3.  If not see
 			      :crtp.o%s}}} \
 			crti.o%s %(startfile_arch) %(startfile_crtbegin) \
 			%(startfile_vtv)"
-#else
-#define STARTFILE_SPEC "%{!shared:%{!symbolic: \
-			  %{p:mcrt1.o%s; \
-                            pg:gcrt1.o%s gmon.o%s; \
-                              :crt1.o%s}}} \
-			crti.o%s %(startfile_arch) %(startfile_crtbegin) \
-			%(startfile_vtv)"
-#endif
 
-#if defined(HAVE_LD_PIE) && defined(HAVE_SOLARIS_CRTS)
+#if defined(HAVE_LD_PIE)
 #define ENDFILE_CRTEND_SPEC "%{static:crtend.o%s; \
 			       shared|" PIE_SPEC ":crtendS.o%s; \
 			       :crtend.o%s}"
@@ -295,7 +285,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #undef  ENDFILE_SPEC
 #define ENDFILE_SPEC \
-  "%{Ofast|ffast-math|funsafe-math-optimizations:crtfastmath.o%s} \
+  "%{Ofast|ffast-math|funsafe-math-optimizations:%{!shared:crtfastmath.o%s}} \
    %(endfile_arch) %(endfile_vtv) %(endfile_crtend) crtn.o%s"
 
 #undef LINK_ARCH32_SPEC_BASE
@@ -428,14 +418,13 @@ along with GCC; see the file COPYING3.  If not see
 #endif
 
 #ifdef USE_GLD
-/* Solaris 11 build 135+ implements dl_iterate_phdr.  GNU ld needs
-   --eh-frame-hdr to create the required .eh_frame_hdr sections.  */
-#if defined(HAVE_LD_EH_FRAME_HDR) && defined(TARGET_DL_ITERATE_PHDR)
+/* GNU ld needs --eh-frame-hdr to create the required .eh_frame_hdr sections.  */
+#if defined(HAVE_LD_EH_FRAME_HDR)
 #define LINK_EH_SPEC "%{!static|static-pie:--eh-frame-hdr} "
-#endif /* HAVE_LD_EH_FRAME && TARGET_DL_ITERATE_PHDR */
+#endif /* HAVE_LD_EH_FRAME */
 #endif
 
-#if defined(HAVE_LD_PIE) && defined(HAVE_SOLARIS_CRTS)
+#if defined(HAVE_LD_PIE)
 #ifdef USE_GLD
 /* Assert -z text by default to match Solaris ld.  */
 #define LD_PIE_SPEC "-pie %{!mimpure-text:-z text}"
@@ -449,7 +438,7 @@ along with GCC; see the file COPYING3.  If not see
   "%{no-pie:} %{pie:%e-pie is not supported in this configuration} "
 #endif
 
-/* collect2.c can only parse GNU nm -n output.  Solaris nm needs -png to
+/* collect2.cc can only parse GNU nm -n output.  Solaris nm needs -png to
    produce the same format.  */
 #define NM_FLAGS "-png"
 
@@ -466,7 +455,7 @@ along with GCC; see the file COPYING3.  If not see
   { "fini",      0, 0, true,  false,  false, false, NULL, NULL }
 
 /* Solaris-specific #pragmas are implemented on top of attributes.  Hook in
-   the bits from config/sol2.c.  */
+   the bits from config/sol2.cc.  */
 #define SUBTARGET_INSERT_ATTRIBUTES solaris_insert_attributes
 #define SUBTARGET_ATTRIBUTE_TABLE SOLARIS_ATTRIBUTE_TABLE
 
@@ -498,11 +487,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #define AS_NEEDS_DASH_FOR_PIPED_INPUT
 
-/* The Solaris assembler cannot grok .stabd directives.  */
-#undef NO_DBX_BNSYM_ENSYM
-#define NO_DBX_BNSYM_ENSYM 1
 #endif
-
 /* Solaris has an implementation of __enable_execute_stack.  */
 #define HAVE_ENABLE_EXECUTE_STACK
 

@@ -1,5 +1,5 @@
 /* modules.cc -- D module initialization and termination.
-   Copyright (C) 2013-2021 Free Software Foundation, Inc.
+   Copyright (C) 2013-2024 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -84,6 +84,7 @@ struct module_info
   vec <tree, va_gc> *sharedctors;
   vec <tree, va_gc> *shareddtors;
   vec <tree, va_gc> *sharedctorgates;
+  vec <tree, va_gc> *standalonectors;
 
   vec <tree, va_gc> *unitTests;
 };
@@ -121,11 +122,14 @@ static module_info *current_testing_module;
 
 static Module *current_module_decl;
 
+/* Any inline symbols that were deferred during codegen.  */
+vec<Declaration *> *deferred_inline_declarations;
+
 /* Returns an internal function identified by IDENT.  This is used
    by both module initialization and dso handlers.  */
 
 static FuncDeclaration *
-get_internal_fn (tree ident, const Prot &prot)
+get_internal_fn (tree ident, const Visibility &visibility)
 {
   Module *mod = current_module_decl;
   const char *name = IDENTIFIER_POINTER (ident);
@@ -141,11 +145,11 @@ get_internal_fn (tree ident, const Prot &prot)
 
   FuncDeclaration *fd = FuncDeclaration::genCfunc (NULL, Type::tvoid,
 						   Identifier::idPool (name));
-  fd->generated = true;
-  fd->loc = Loc (mod->srcfile->toChars (), 1, 0);
+  fd->isGenerated (true);
+  fd->loc = Loc (mod->srcfile.toChars (), 1, 0);
   fd->parent = mod;
-  fd->protection = prot;
-  fd->semanticRun = PASSsemantic3done;
+  fd->visibility = visibility;
+  fd->semanticRun = PASS::semantic3done;
 
   return fd;
 }
@@ -156,7 +160,9 @@ get_internal_fn (tree ident, const Prot &prot)
 static tree
 build_internal_fn (tree ident, tree expr)
 {
-  FuncDeclaration *fd = get_internal_fn (ident, Prot (Prot::private_));
+  Visibility visibility;
+  visibility.kind = Visibility::private_;
+  FuncDeclaration *fd = get_internal_fn (ident, visibility);
   tree decl = get_symbol_decl (fd);
 
   tree old_context = start_function (fd);
@@ -272,12 +278,13 @@ get_compiler_dso_type (void)
   DECL_CHAIN (field) = fields;
   fields = field;
 
-  field = create_field_decl (build_pointer_type (get_moduleinfo_type ()),
-			     NULL, 1, 1);
+  tree moduleinfo_ptr_ptr_type =
+    build_pointer_type (build_pointer_type (get_moduleinfo_type ()));
+
+  field = create_field_decl (moduleinfo_ptr_ptr_type, NULL, 1, 1);
   DECL_CHAIN (field) = fields;
   fields = field;
-  field = create_field_decl (build_pointer_type (get_moduleinfo_type ()),
-			     NULL, 1, 1);
+  field = create_field_decl (moduleinfo_ptr_ptr_type, NULL, 1, 1);
   DECL_CHAIN (field) = fields;
   fields = field;
 
@@ -324,7 +331,7 @@ static tree
 build_dso_cdtor_fn (bool ctor_p)
 {
   const char *name = ctor_p ? GDC_PREFIX ("dso_ctor") : GDC_PREFIX ("dso_dtor");
-  tree condition = ctor_p ? boolean_true_node : boolean_false_node;
+  tree condition = ctor_p ? d_bool_true_node : d_bool_false_node;
 
   /* Declaration of dso_ctor/dso_dtor is:
 
@@ -338,8 +345,9 @@ build_dso_cdtor_fn (bool ctor_p)
 	}
     }
    */
-  FuncDeclaration *fd = get_internal_fn (get_identifier (name),
-					 Prot (Prot::public_));
+  Visibility visibility;
+  visibility.kind = Visibility::public_;
+  FuncDeclaration *fd = get_internal_fn (get_identifier (name), visibility);
   tree decl = get_symbol_decl (fd);
 
   TREE_PUBLIC (decl) = 1;
@@ -432,11 +440,11 @@ register_moduleinfo (Module *decl, tree minfo)
   if (!first_module)
     return;
 
-  start_minfo_node = build_dso_registry_var (targetdm.d_minfo_start_name,
+  start_minfo_node = build_dso_registry_var (targetdm.d_minfo_section_start,
 					     ptr_type_node);
   rest_of_decl_compilation (start_minfo_node, 1, 0);
 
-  stop_minfo_node = build_dso_registry_var (targetdm.d_minfo_end_name,
+  stop_minfo_node = build_dso_registry_var (targetdm.d_minfo_section_end,
 					    ptr_type_node);
   rest_of_decl_compilation (stop_minfo_node, 1, 0);
 
@@ -446,7 +454,7 @@ register_moduleinfo (Module *decl, tree minfo)
   d_finish_decl (dso_slot_node);
 
   dso_initialized_node = build_dso_registry_var (GDC_PREFIX ("dso_initialized"),
-						 boolean_type_node);
+						 d_bool_type);
   d_finish_decl (dso_initialized_node);
 
   /* Declare dso_ctor() and dso_dtor().  */
@@ -496,7 +504,7 @@ layout_moduleinfo_fields (Module *decl, tree type)
   if (decl->sshareddtor)
     layout_moduleinfo_field (ptr_type_node, type, offset);
 
-  if (decl->findGetMembers ())
+  if (dmd::findGetMembers (decl))
     layout_moduleinfo_field (ptr_type_node, type, offset);
 
   if (decl->sictor)
@@ -524,11 +532,7 @@ layout_moduleinfo_fields (Module *decl, tree type)
 
   /* Array of local ClassInfo decls are laid out in the same way.  */
   ClassDeclarations aclasses;
-  for (size_t i = 0; i < decl->members->length; i++)
-    {
-      Dsymbol *member = (*decl->members)[i];
-      member->addLocalClass (&aclasses);
-    }
+  dmd::getLocalClasses (decl, aclasses);
 
   if (aclasses.length)
     {
@@ -558,11 +562,7 @@ layout_moduleinfo (Module *decl)
   ClassDeclarations aclasses;
   FuncDeclaration *sgetmembers;
 
-  for (size_t i = 0; i < decl->members->length; i++)
-    {
-      Dsymbol *member = (*decl->members)[i];
-      member->addLocalClass (&aclasses);
-    }
+  dmd::getLocalClasses (decl, aclasses);
 
   size_t aimports_dim = decl->aimports.length;
   for (size_t i = 0; i < decl->aimports.length; i++)
@@ -572,7 +572,7 @@ layout_moduleinfo (Module *decl)
 	aimports_dim--;
     }
 
-  sgetmembers = decl->findGetMembers ();
+  sgetmembers = dmd::findGetMembers (decl);
 
   size_t flags = 0;
   if (decl->sctor)
@@ -721,6 +721,9 @@ build_module_tree (Module *decl)
   current_testing_module = &mitest;
   current_module_decl = decl;
 
+  vec<Declaration *> deferred_decls = vNULL;
+  deferred_inline_declarations = &deferred_decls;
+
   /* Layout module members.  */
   if (decl->members)
     {
@@ -740,7 +743,8 @@ build_module_tree (Module *decl)
       /* Associate the module info symbol with a mock module.  */
       const char *name = concat (GDC_PREFIX ("modtest__"),
 				 decl->ident->toChars (), NULL);
-      Module *tm = Module::create (decl->arg, Identifier::idPool (name), 0, 0);
+      Module *tm = Module::create (decl->arg.ptr, Identifier::idPool (name),
+				   0, 0);
       Dsymbols members;
 
       /* Setting parent puts module in the same package as the current, to
@@ -759,6 +763,11 @@ build_module_tree (Module *decl)
       if (mitest.dtors)
 	tm->sdtor = build_funcs_gates_fn (get_identifier ("*__modtestdtor"),
 					  mitest.dtors, NULL);
+
+      if (mi.standalonectors)
+	tm->sictor
+	  = build_funcs_gates_fn (get_identifier ("*__modtestsharedictor"),
+				  mi.standalonectors, NULL);
 
       if (mitest.sharedctors || mitest.sharedctorgates)
 	tm->ssharedctor
@@ -780,9 +789,7 @@ build_module_tree (Module *decl)
 
   /* Default behavior is to always generate module info because of templates.
      Can be switched off for not compiling against runtime library.  */
-  if (global.params.useModuleInfo
-      && Module::moduleinfo != NULL
-      && decl->ident != Identifier::idPool ("__entrypoint"))
+  if (global.params.useModuleInfo && Module::moduleinfo != NULL)
     {
       if (mi.ctors || mi.ctorgates)
 	decl->sctor = build_funcs_gates_fn (get_identifier ("*__modctor"),
@@ -791,6 +798,11 @@ build_module_tree (Module *decl)
       if (mi.dtors)
 	decl->sdtor = build_funcs_gates_fn (get_identifier ("*__moddtor"),
 					    mi.dtors, NULL);
+
+      if (mi.standalonectors)
+	decl->sictor
+	  = build_funcs_gates_fn (get_identifier ("*__modsharedictor"),
+				  mi.standalonectors, NULL);
 
       if (mi.sharedctors || mi.sharedctorgates)
 	decl->ssharedctor
@@ -809,9 +821,14 @@ build_module_tree (Module *decl)
       layout_moduleinfo (decl);
     }
 
+  /* Process all deferred functions after finishing module.  */
+  for (size_t i = 0; i < deferred_decls.length (); ++i)
+    build_decl_tree (deferred_decls[i]);
+
   current_moduleinfo = NULL;
   current_testing_module = NULL;
   current_module_decl = NULL;
+  deferred_inline_declarations = NULL;
 }
 
 /* Returns the current function or module context for the purpose
@@ -852,8 +869,15 @@ register_module_decl (Declaration *d)
       /* If a static constructor, push into the current ModuleInfo.
 	 Checks for `shared' first because it derives from the non-shared
 	 constructor type in the front-end.  */
-      if (fd->isSharedStaticCtorDeclaration ())
-	vec_safe_push (minfo->sharedctors, decl);
+      if (SharedStaticCtorDeclaration *sctor
+	  = fd->isSharedStaticCtorDeclaration ())
+	{
+	  /* The `shared' static constructor was marked `@standalone'.  */
+	  if (sctor->standalone)
+	    vec_safe_push (minfo->standalonectors, decl);
+	  else
+	    vec_safe_push (minfo->sharedctors, decl);
+	}
       else if (fd->isStaticCtorDeclaration ())
 	vec_safe_push (minfo->ctors, decl);
 
@@ -884,6 +908,15 @@ register_module_decl (Declaration *d)
       if (fd->isUnitTestDeclaration ())
 	vec_safe_push (minfo->unitTests, decl);
     }
+}
+
+/* Add DECL as a declaration to emit at the end of the current module.  */
+
+void
+d_defer_declaration (Declaration *decl)
+{
+  gcc_assert (deferred_inline_declarations != NULL);
+  deferred_inline_declarations->safe_push (decl);
 }
 
 /* Wrapup all global declarations and start the final compilation.  */

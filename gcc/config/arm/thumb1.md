@@ -1,5 +1,5 @@
 ;; ARM Thumb-1 Machine Description
-;; Copyright (C) 2007-2021 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2024 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -57,7 +57,7 @@
 
 ;; Changes to the constraints of this pattern must be propagated to those of
 ;; atomic additions in sync.md and to the logic for bind_old_new in
-;; arm_split_atomic_op in arm.c.  These must be at least as strict as the
+;; arm_split_atomic_op in arm.cc.  These must be at least as strict as the
 ;; constraints here and aim to be as permissive.
 (define_insn_and_split "*thumb1_addsi3"
   [(set (match_operand:SI          0 "register_operand" "=l,l,l,*rk,*hk,l,k,l,l,l")
@@ -113,7 +113,7 @@
 ;; Reloading and elimination of the frame pointer can
 ;; sometimes cause this optimization to be missed.
 (define_peephole2
-  [(set (match_operand:SI 0 "arm_general_register_operand" "")
+  [(set (match_operand:SI 0 "low_register_operand" "")
 	(match_operand:SI 1 "const_int_operand" ""))
    (set (match_dup 0)
 	(plus:SI (match_dup 0) (reg:SI SP_REGNUM)))]
@@ -137,7 +137,7 @@
 
 ;; Changes to the constraints of this pattern must be propagated to those of
 ;; atomic subtractions in sync.md and to the logic for bind_old_new in
-;; arm_split_atomic_op in arm.c.  These must be at least as strict as the
+;; arm_split_atomic_op in arm.cc.  These must be at least as strict as the
 ;; constraints here and aim to be as permissive.
 (define_insn "thumb1_subsi3_insn"
   [(set (match_operand:SI           0 "register_operand" "=l")
@@ -183,7 +183,7 @@
 
 ;; Changes to the constraints of this pattern must be propagated to those of
 ;; atomic bitwise ANDs and NANDs in sync.md and to the logic for bind_old_new
-;; in arm_split_atomic_op in arm.c.  These must be at least as strict as the
+;; in arm_split_atomic_op in arm.cc.  These must be at least as strict as the
 ;; constraints here and aim to be as permissive.
 (define_insn "*thumb1_andsi3_insn"
   [(set (match_operand:SI         0 "register_operand" "=l")
@@ -241,7 +241,7 @@
 
 ;; Changes to the constraints of this pattern must be propagated to those of
 ;; atomic inclusive ORs in sync.md and to the logic for bind_old_new in
-;; arm_split_atomic_op in arm.c.  These must be at least as strict as the
+;; arm_split_atomic_op in arm.cc.  These must be at least as strict as the
 ;; constraints here and aim to be as permissive.
 (define_insn "*thumb1_iorsi3_insn"
   [(set (match_operand:SI         0 "register_operand" "=l")
@@ -255,7 +255,7 @@
 
 ;; Changes to the constraints of this pattern must be propagated to those of
 ;; atomic exclusive ORs in sync.md and to the logic for bind_old_new in
-;; arm_split_atomic_op in arm.c.  These must be at least as strict as the
+;; arm_split_atomic_op in arm.cc.  These must be at least as strict as the
 ;; constraints here and aim to be as permissive.
 (define_insn "*thumb1_xorsi3_insn"
   [(set (match_operand:SI         0 "register_operand" "=l")
@@ -653,6 +653,42 @@
    (set_attr "type" "multiple,multiple,multiple,multiple,load_8,store_8,load_8,store_8,multiple")
    (set_attr "arch" "t1,t1,t1,v8mb,t1,t1,t1,t1,t1")
    (set_attr "pool_range" "*,*,*,*,*,*,1018,*,*")]
+)
+
+
+;; match patterns usable by ldmia/stmia
+(define_peephole2
+  [(set (match_operand:DIDF 0 "low_register_operand" "")
+	(match_operand:DIDF 1 "memory_operand" ""))]
+  "TARGET_THUMB1
+   && low_register_operand (XEXP (operands[1], 0), SImode)
+   && !reg_overlap_mentioned_p (XEXP (operands[1], 0), operands[0])
+   && peep2_reg_dead_p (1, XEXP (operands[1], 0))"
+  [(set (match_dup 0)
+	(match_dup 1))]
+  {
+    operands[1] = change_address (operands[1], VOIDmode,
+				  gen_rtx_POST_INC (SImode,
+						    XEXP (operands[1], 0)));
+  }
+)
+
+(define_peephole2
+  [(set (match_operand:DIDF 0 "memory_operand" "")
+	(match_operand:DIDF 1 "low_register_operand" ""))]
+  "TARGET_THUMB1
+   && low_register_operand (XEXP (operands[0], 0), SImode)
+   && peep2_reg_dead_p (1, XEXP (operands[0], 0))
+   /* The low register in the transfer list may overlap the address,
+      but the second cannot.  */
+   && REGNO (XEXP (operands[0], 0)) != (REGNO (operands[1]) + 1)"
+  [(set (match_dup 0)
+	(match_dup 1))]
+  {
+    operands[0] = change_address (operands[0], VOIDmode,
+				  gen_rtx_POST_INC (SImode,
+						    XEXP (operands[0], 0)));
+  }
 )
 
 (define_insn "*thumb1_movsi_insn"
@@ -1204,6 +1240,21 @@
 		(const_int 6)
 		(const_int 8))))
    (set_attr "type" "multiple")]
+)
+
+;; An expander which makes use of the cbranchsi4_scratch insn, but can
+;; be used safely after RA.
+(define_expand "cbranchsi4_neg_late"
+  [(parallel [
+     (set (pc) (if_then_else
+		(match_operator 4 "arm_comparison_operator"
+		 [(match_operand:SI 1 "s_register_operand")
+		  (match_operand:SI 2 "thumb1_cmpneg_operand")])
+		(label_ref (match_operand 3 "" ""))
+		(pc)))
+     (clobber (match_operand:SI 0 "s_register_operand"))
+  ])]
+  "TARGET_THUMB1"
 )
 
 ;; Changes to the constraints of this pattern must be propagated to those of
@@ -2040,4 +2091,3 @@
    (set_attr "conds" "clob")
    (set_attr "type" "multiple")]
 )
-

@@ -1,5 +1,5 @@
 /* GNU compiler vector extension intrinsics
-   Copyright (C) 2015-2021 Free Software Foundation, Inc.
+   Copyright (C) 2015-2024 Free Software Foundation, Inc.
    Contributed by Andreas Krebbel (Andreas.Krebbel@de.ibm.com)
 
 This file is part of GCC.
@@ -59,8 +59,8 @@ along with GCC; see the file COPYING3.  If not see
 				    | __VEC_CLASS_FP_INFINITY)
 
 /* This also accepts a type for its parameter, so it is not enough
-   to #define vec_step to __builtin_vec_step.  */
-#define vec_step(x) __builtin_vec_step (* (__typeof__ (x) *) 0)
+   to #define vec_step to __builtin_s390_vec_step.  */
+#define vec_step(x) __builtin_s390_vec_step (* (__typeof__ (x) *) 0)
 
 static inline int
 __lcbb(const void *ptr, int bndry)
@@ -109,8 +109,8 @@ __lcbb(const void *ptr, int bndry)
 #define vec_rint(X)   __builtin_s390_vfi((X), 0, 0)
 #define vec_roundc(X) __builtin_s390_vfi((X), 4, 0)
 #define vec_round(X)  __builtin_s390_vfi((X), 4, 4)
-#define vec_doublee(X) __builtin_s390_vfll((X))
-#define vec_floate(X) __builtin_s390_vflr((X), 0, 0)
+#define vec_doublee(X) __builtin_s390_vflls((X))
+#define vec_floate(X) __builtin_s390_vflrd((X), 0, 0)
 #define vec_load_len_r(X,L)				\
   (__vector unsigned char)__builtin_s390_vlrlr((L),(X))
 #define vec_store_len_r(X,Y,L) \

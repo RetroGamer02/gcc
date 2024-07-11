@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---             Copyright (C) 2020, Free Software Foundation, Inc.           --
+--             Copyright (C) 2020-2024, Free Software Foundation, Inc.      --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,8 +27,9 @@ with Types; use Types;
 
 package Exp_Put_Image is
 
-   --  Routines to build Put_Image calls. See Ada.Strings.Text_Output.Utils and
-   --  System.Put_Images for the run-time routines we are generating calls to.
+   --  Routines to build Put_Image calls. See Ada.Strings.Text_Buffers.Utils
+   --  and System.Put_Images for the run-time routines we are generating calls
+   --  to.
 
    --  For a call to T'Put_Image, if T is elementary, we expand the code
    --  inline. If T is a tagged type, then Put_Image is a primitive procedure
@@ -38,7 +39,7 @@ package Exp_Put_Image is
    --  are calls to T'Put_Image in different units, there will be duplicates;
    --  each unit will get a copy of the T'Put_Image procedure.
 
-   function Enable_Put_Image (Typ : Entity_Id) return Boolean;
+   function Put_Image_Enabled (Typ : Entity_Id) return Boolean;
    --  True if the predefined Put_Image should be enabled for type T. Put_Image
    --  is always enabled if there is a user-specified one.
 
@@ -69,18 +70,14 @@ package Exp_Put_Image is
    --  the declaration and name (entity) of the procedure.
 
    procedure Build_Array_Put_Image_Procedure
-     (Nod  : Node_Id;
-      Typ  : Entity_Id;
+     (Typ  : Entity_Id;
       Decl : out Node_Id;
       Pnam : out Entity_Id);
-   --  Nod provides the Sloc value for the generated code
 
    procedure Build_Record_Put_Image_Procedure
-     (Loc  : Source_Ptr;
-      Typ  : Entity_Id;
+     (Typ  : Entity_Id;
       Decl : out Node_Id;
       Pnam : out Entity_Id);
-   --  Loc is the location of the subprogram declaration
 
    function Build_Unknown_Put_Image_Call (N : Node_Id) return Node_Id;
    --  Build a call to Put_Image_Unknown
@@ -90,14 +87,14 @@ package Exp_Put_Image is
    --  T'Image.
 
    function Build_Image_Call (N : Node_Id) return Node_Id;
-   --  N is a call to T'Image, and this translates it into the appropriate code
-   --  to call T'Put_Image into a buffer and then extract the string from the
-   --  buffer.
+   --  N is a call to T'[[Wide_]Wide_]Image, and this translates it into the
+   --  appropriate code to call T'Put_Image into a buffer and then extract the
+   --  [[wide] wide] string from the buffer.
 
-   procedure Preload_Sink (Compilation_Unit : Node_Id);
-   --  Call RTE (RE_Sink) if necessary, to load the packages involved in
-   --  Put_Image. We need to do this explicitly, fairly early during
-   --  compilation, because otherwise it happens during freezing, which
+   procedure Preload_Root_Buffer_Type (Compilation_Unit : Node_Id);
+   --  Call RTE (RE_Root_Buffer_Type) if necessary, to load the packages
+   --  involved in Put_Image. We need to do this explicitly, fairly early
+   --  during compilation, because otherwise it happens during freezing, which
    --  triggers visibility bugs in generic instantiations.
 
 end Exp_Put_Image;

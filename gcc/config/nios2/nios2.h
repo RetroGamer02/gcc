@@ -1,5 +1,5 @@
 /* Definitions of target machine for Altera Nios II.
-   Copyright (C) 2012-2021 Free Software Foundation, Inc.
+   Copyright (C) 2012-2024 Free Software Foundation, Inc.
    Contributed by Jonah Graham (jgraham@altera.com), 
    Will Reece (wreece@altera.com), and Jeff DaSilva (jdasilva@altera.com).
    Contributed by Mentor Graphics, Inc.
@@ -100,9 +100,6 @@
 #define SHORT_TYPE_SIZE 16
 #define LONG_TYPE_SIZE 32
 #define LONG_LONG_TYPE_SIZE 64
-#define FLOAT_TYPE_SIZE 32
-#define DOUBLE_TYPE_SIZE 64
-#define LONG_DOUBLE_TYPE_SIZE DOUBLE_TYPE_SIZE
 
 #undef SIZE_TYPE
 #define SIZE_TYPE "unsigned int"
@@ -297,7 +294,6 @@ typedef struct nios2_args
   ((REGNO) >= FIRST_ARG_REGNO && (REGNO) <= LAST_ARG_REGNO)
 
 /* Passing function arguments on stack.  */
-#define PUSH_ARGS 0
 #define ACCUMULATE_OUTGOING_ARGS 1
 
 /* We define TARGET_RETURN_IN_MEMORY, so set to zero.  */

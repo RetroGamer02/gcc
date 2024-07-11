@@ -22,6 +22,11 @@ AC_CHECK_PROGS([ACLOCAL], [aclocal], [$MISSING aclocal])
 AC_CHECK_PROGS([AUTOCONF], [autoconf], [$MISSING autoconf])
 AC_CHECK_PROGS([AUTOHEADER], [autoheader], [$MISSING autoheader])
 
+if test -z "$ETAGS"; then
+  ETAGS=etags
+fi
+AC_SUBST([ETAGS])
+
 # Figure out what compiler warnings we can enable.
 # See config/warnings.m4 for details.
 
@@ -97,6 +102,9 @@ if test $ac_cv_type_uchar = yes; then
   AC_DEFINE(HAVE_UCHAR, 1,
   [Define if <sys/types.h> defines \`uchar'.])
 fi
+
+AC_CHECK_SIZEOF(ino_t)
+AC_CHECK_SIZEOF(dev_t)
 
 # g++ on Solaris 10+ defines _XOPEN_SOURCE=600, which exposes a different
 # iconv() prototype.
@@ -177,12 +185,6 @@ if test x$ac_assert_checking != x ; then
 [Define if you want assertions enabled.  This is a cheap check.])
 fi
 
-if test x$ac_valgrind_checking != x ; then
-  AC_DEFINE(ENABLE_VALGRIND_CHECKING, 1,
-[Define if you want to workaround valgrind (a memory checker) warnings about
- possible memory leaks because of libcpp use of interior pointers.])
-fi
-
 AC_ARG_ENABLE(canonical-system-headers,
 [  --enable-canonical-system-headers
                           enable or disable system headers canonicalization],
@@ -203,8 +205,23 @@ esac
 # Enable --enable-host-shared.
 AC_ARG_ENABLE(host-shared,
 [AS_HELP_STRING([--enable-host-shared],
-		[build host code as shared libraries])],
-[PICFLAG=-fPIC], [PICFLAG=])
+		[build host code as shared libraries])])
+AC_SUBST(enable_host_shared)
+
+# Enable --enable-host-pie.
+AC_ARG_ENABLE(host-pie,
+[AS_HELP_STRING([--enable-host-pie],
+		[build host code as PIE])])
+AC_SUBST(enable_host_pie)
+
+if test x$enable_host_shared = xyes; then
+  PICFLAG=-fPIC
+elif test x$enable_host_pie = xyes; then
+  PICFLAG=-fPIE
+else
+  PICFLAG=
+fi
+
 AC_SUBST(PICFLAG)
 
 # Enable Intel CET on Intel CET enabled host if jit is enabled.
@@ -224,13 +241,9 @@ AC_ARG_ENABLE(valgrind-annotations,
 [enable_valgrind_annotations=no])
 if test x$enable_valgrind_annotations != xno \
     || test x$ac_valgrind_checking != x; then
-  if (test $have_valgrind_h = no \
-      && test $gcc_cv_header_memcheck_h = no \
-      && test $gcc_cv_header_valgrind_memcheck_h = no); then
-    AC_MSG_ERROR([*** Can't find valgrind/memcheck.h, memcheck.h or valgrind.h])
-  fi
-  AC_DEFINE(ENABLE_VALGRIND_ANNOTATIONS, 1,
-[Define to get calls to the valgrind runtime enabled.])
+  AC_DEFINE(ENABLE_VALGRIND_WORKAROUNDS, 1,
+[Define if you want to workaround Valgrind warnings about
+ possible memory leaks because of libcpp use of interior pointers.])
 fi
 
 # Output.

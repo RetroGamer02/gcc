@@ -3,7 +3,7 @@ AM_CPPFLAGS = -I $(top_srcdir)/include -I $(top_srcdir)
 # May be used by toolexeclibdir.
 gcc_version := $(shell @get_gcc_base_ver@ $(top_srcdir)/../gcc/BASE-VER)
 
-DEFS = -D_GNU_SOURCE -D_DEBUG -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DASAN_HAS_EXCEPTIONS=1 -DASAN_NEEDS_SEGV=1 -DCAN_SANITIZE_UB=0 -DASAN_HAS_CXA_RETHROW_PRIMARY_EXCEPTION=0
+DEFS = -D_GNU_SOURCE -D_DEBUG -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DASAN_HAS_EXCEPTIONS=1 -DASAN_NEEDS_SEGV=1 -DCAN_SANITIZE_UB=0 -DASAN_HAS_CXA_RETHROW_PRIMARY_EXCEPTION=0 @AS_SYM_ASSIGN_DEFS@
 if USING_MAC_INTERPOSE
 DEFS += -DMAC_INTERPOSE_FUNCTIONS -DMISSING_BLOCKS_SUPPORT
 endif
@@ -11,6 +11,7 @@ AM_CXXFLAGS = -Wall -W -Wno-unused-parameter -Wwrite-strings -pedantic -Wno-long
 AM_CXXFLAGS += $(LIBSTDCXX_RAW_CXX_CXXFLAGS)
 AM_CXXFLAGS += -std=gnu++14
 AM_CXXFLAGS += $(EXTRA_CXXFLAGS)
+AM_CCASFLAGS = $(EXTRA_ASFLAGS)
 ACLOCAL_AMFLAGS = -I $(top_srcdir) -I $(top_srcdir)/config
 
 toolexeclib_LTLIBRARIES = libasan.la
@@ -38,7 +39,6 @@ asan_files = \
 	asan_posix.cpp \
 	asan_premap_shadow.cpp \
 	asan_report.cpp \
-	asan_rtems.cpp \
 	asan_rtl.cpp \
 	asan_shadow_setup.cpp \
 	asan_stack.cpp \
@@ -60,7 +60,12 @@ libasan_la_LIBADD += $(top_builddir)/libbacktrace/libsanitizer_libbacktrace.la
 endif
 libasan_la_LIBADD += $(LIBSTDCXX_RAW_CXX_LDFLAGS)
 
-libasan_la_LDFLAGS = -version-info `grep -v '^\#' $(srcdir)/libtool-version` $(link_libasan)
+if ENABLE_DARWIN_AT_RPATH
+libasan_darwin_rpath = -Wc,-nodefaultrpaths
+libasan_darwin_rpath += -Wl,-rpath,@loader_path
+endif
+libasan_la_LDFLAGS = -version-info `grep -v '^\#' $(srcdir)/libtool-version` \
+	$(link_libasan) $(libasan_darwin_rpath)
 
 libasan_preinit.o: asan_preinit.o
 	cp $< $@

@@ -1,5 +1,5 @@
 /* Target Definitions for NVPTX.
-   Copyright (C) 2014-2021 Free Software Foundation, Inc.
+   Copyright (C) 2014-2024 Free Software Foundation, Inc.
    Contributed by Bernd Schmidt <bernds@codesourcery.com>
 
    This file is part of GCC.
@@ -27,26 +27,19 @@
 
 /* Run-time Target.  */
 
-#define STARTFILE_SPEC "%{mmainkernel:crt0.o}"
+/* Use '--with-arch' for default '-misa'.  */
+#define OPTION_DEFAULT_SPECS \
+  { "arch", "%{!misa=*:-misa=%(VALUE)}" }, \
 
-/* Default needs to be in sync with default for misa in nvptx.opt.
-   We add a default here to work around a hard-coded sm_30 default in
-   nvptx-as.  */
-#define ASM_SPEC "%{misa=*:-m %*; :-m sm_35}"
+/* Assembler supports '-v' option; handle similar to
+   '../../gcc.cc:asm_options', 'HAVE_GNU_AS'.  */
+#define ASM_SPEC "%{v}"
 
-#define TARGET_CPU_CPP_BUILTINS()		\
-  do						\
-    {						\
-      builtin_assert ("machine=nvptx");		\
-      builtin_assert ("cpu=nvptx");		\
-      builtin_define ("__nvptx__");		\
-      if (TARGET_SOFT_STACK)			\
-        builtin_define ("__nvptx_softstack__");	\
-      if (TARGET_UNIFORM_SIMT)			\
-        builtin_define ("__nvptx_unisimt__");	\
-    } while (0)
+#define STARTFILE_SPEC "%{mmainkernel:crt0.o%s}"
 
-/* Avoid the default in ../../gcc.c, which adds "-pthread", which is not
+#define TARGET_CPU_CPP_BUILTINS() nvptx_cpu_cpp_builtins ()
+
+/* Avoid the default in ../../gcc.cc, which adds "-pthread", which is not
    supported for nvptx.  */
 #define GOMP_SELF_SPECS ""
 
@@ -82,9 +75,6 @@
 #define INT_TYPE_SIZE 32
 #define LONG_TYPE_SIZE (TARGET_ABI64 ? 64 : 32)
 #define LONG_LONG_TYPE_SIZE 64
-#define FLOAT_TYPE_SIZE 32
-#define DOUBLE_TYPE_SIZE 64
-#define LONG_DOUBLE_TYPE_SIZE 64
 #define TARGET_SUPPORTS_WIDE_INT 1
 
 #undef SIZE_TYPE
@@ -96,7 +86,11 @@
 #define Pmode (TARGET_ABI64 ? DImode : SImode)
 #define STACK_SIZE_MODE Pmode
 
-#define TARGET_SM35 (ptx_isa_option >= PTX_ISA_SM35)
+#include "nvptx-gen.h"
+
+#define TARGET_PTX_6_0 (ptx_version_option >= PTX_VERSION_6_0)
+#define TARGET_PTX_6_3 (ptx_version_option >= PTX_VERSION_6_3)
+#define TARGET_PTX_7_0 (ptx_version_option >= PTX_VERSION_7_0)
 
 /* Registers.  Since ptx is a virtual target, we just define a few
    hard registers for special purposes and leave pseudos unallocated.
@@ -212,8 +206,8 @@ struct GTY(()) machine_function
 {
   rtx_expr_list *call_args;  /* Arg list for the current call.  */
   bool doing_call; /* Within a CALL_ARGS ... CALL_ARGS_END sequence.  */
-  bool is_varadic;  /* This call is varadic  */
-  bool has_varadic;  /* Current function has a varadic call.  */
+  bool is_variadic;  /* This call is variadic  */
+  bool has_variadic;  /* Current function has a variadic call.  */
   bool has_chain; /* Current function has outgoing static chain.  */
   bool has_softstack; /* Current function has a soft stack frame.  */
   bool has_simtreg; /* Current function has an OpenMP SIMD region.  */
@@ -232,6 +226,7 @@ struct GTY(()) machine_function
   rtx sync_bar; /* Synchronization barrier ID for vectors.  */
   rtx unisimt_master; /* 'Master lane index' for -muniform-simt.  */
   rtx unisimt_predicate; /* Predicate for -muniform-simt.  */
+  rtx unisimt_outside_simt_predicate; /* Predicate for -muniform-simt.  */
   rtx unisimt_location; /* Mask location for -muniform-simt.  */
   /* The following two fields hold the maximum size resp. alignment required
      for per-lane storage in OpenMP SIMD regions.  */
@@ -263,7 +258,7 @@ struct GTY(()) machine_function
 #undef ASM_APP_OFF
 #define ASM_APP_OFF "\t// #NO_APP \n"
 
-#define DBX_REGISTER_NUMBER(N) N
+#define DEBUGGER_REGNO(N) N
 
 #define TEXT_SECTION_ASM_OP ""
 #define DATA_SECTION_ASM_OP ""
@@ -320,17 +315,57 @@ struct GTY(()) machine_function
   ((VALUE) = GET_MODE_BITSIZE ((MODE)), 2)
 
 #define SUPPORTS_WEAK 1
+
+#define MAKE_DECL_ONE_ONLY(DECL) \
+  (DECL_WEAK (DECL) = 1)
+
+/* The documentation states that ASM_OUTPUT_DEF_FROM_DECLS is used in
+   preference to ASM_OUTPUT_DEF if the tree nodes are available.  However, we
+   need the tree nodes to emit the prototype, so at this point it's not clear
+   how we can support ASM_OUTPUT_DEF.  Still, we need to define it, or
+   ASM_OUTPUT_DEF_FROM_DECLS is ignored.  For now, assert, and once we run
+   into it possibly improve by somehow emitting the prototype elsewhere, or
+   emitting a reasonable error message.  */
+#define ASM_OUTPUT_DEF(FILE,LABEL1,LABEL2)	\
+  do						\
+    {						\
+      (void) (FILE);				\
+      (void) (LABEL1);				\
+      (void) (LABEL2);				\
+      gcc_unreachable ();			\
+    }						\
+  while (0)
+#define ASM_OUTPUT_DEF_FROM_DECLS(STREAM, NAME, VALUE)	\
+  nvptx_asm_output_def_from_decls (STREAM, NAME, VALUE)
+
+/* ..., but also override other macros to avoid 'gcc/defaults.h'-initialization
+   due to that dummy 'ASM_OUTPUT_DEF'.  */
+#define TARGET_USE_LOCAL_THUNK_ALIAS_P(DECL) TARGET_SUPPORTS_ALIASES
+#define TARGET_SUPPORTS_ALIASES (nvptx_alias != 0)
+
 #define NO_DOT_IN_LABEL
 #define ASM_COMMENT_START "//"
 
-#define STORE_FLAG_VALUE -1
+#define STORE_FLAG_VALUE 1
 #define FLOAT_STORE_FLAG_VALUE(MODE) REAL_VALUE_ATOF("1.0", (MODE))
 
 #define CASE_VECTOR_MODE SImode
 #define MOVE_MAX 8
 #define MOVE_RATIO(SPEED) 4
 #define FUNCTION_MODE QImode
-#define HAS_INIT_SECTION 1
+
+/* Implement global constructor, destructor support in a conceptually simpler
+   way than using 'collect2' (the program): implement the respective
+   functionality in the nvptx-tools 'ld'.  This however still requires the
+   compiler-side effects corresponding to 'USE_COLLECT2': the global
+   constructor, destructor support functions need to have external linkage, and
+   therefore names that are "unique across the whole link".  Use
+   '!targetm.have_ctors_dtors' to achieve this (..., and thus don't need to
+   provide 'targetm.asm_out.constructor', 'targetm.asm_out.destructor').  */
+#define TARGET_HAVE_CTORS_DTORS false
+
+/* See 'libgcc/config/nvptx/crt0.c' for wrapping of 'main'.  */
+#define HAS_INIT_SECTION
 
 /* The C++ front end insists to link against libstdc++ -- which we don't build.
    Tell it to instead link against the innocuous libgcc.  */

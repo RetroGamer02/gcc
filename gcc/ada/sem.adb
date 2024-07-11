@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,40 +23,44 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Atree;     use Atree;
-with Debug;     use Debug;
-with Debug_A;   use Debug_A;
-with Elists;    use Elists;
-with Exp_SPARK; use Exp_SPARK;
-with Expander;  use Expander;
-with Ghost;     use Ghost;
-with Lib;       use Lib;
-with Lib.Load;  use Lib.Load;
-with Nlists;    use Nlists;
-with Output;    use Output;
-with Restrict;  use Restrict;
-with Sem_Attr;  use Sem_Attr;
-with Sem_Ch2;   use Sem_Ch2;
-with Sem_Ch3;   use Sem_Ch3;
-with Sem_Ch4;   use Sem_Ch4;
-with Sem_Ch5;   use Sem_Ch5;
-with Sem_Ch6;   use Sem_Ch6;
-with Sem_Ch7;   use Sem_Ch7;
-with Sem_Ch8;   use Sem_Ch8;
-with Sem_Ch9;   use Sem_Ch9;
-with Sem_Ch10;  use Sem_Ch10;
-with Sem_Ch11;  use Sem_Ch11;
-with Sem_Ch12;  use Sem_Ch12;
-with Sem_Ch13;  use Sem_Ch13;
-with Sem_Prag;  use Sem_Prag;
-with Sem_Util;  use Sem_Util;
-with Sinfo;     use Sinfo;
-with Stand;     use Stand;
-with Stylesw;   use Stylesw;
-with Uintp;     use Uintp;
-with Uname;     use Uname;
+with Atree;          use Atree;
+with Debug;          use Debug;
+with Debug_A;        use Debug_A;
+with Einfo;          use Einfo;
+with Einfo.Utils;    use Einfo.Utils;
+with Elists;         use Elists;
+with Exp_SPARK;      use Exp_SPARK;
+with Expander;       use Expander;
+with Ghost;          use Ghost;
+with Lib;            use Lib;
+with Lib.Load;       use Lib.Load;
+with Nlists;         use Nlists;
+with Output;         use Output;
+with Restrict;       use Restrict;
+with Sem_Attr;       use Sem_Attr;
+with Sem_Ch2;        use Sem_Ch2;
+with Sem_Ch3;        use Sem_Ch3;
+with Sem_Ch4;        use Sem_Ch4;
+with Sem_Ch5;        use Sem_Ch5;
+with Sem_Ch6;        use Sem_Ch6;
+with Sem_Ch7;        use Sem_Ch7;
+with Sem_Ch8;        use Sem_Ch8;
+with Sem_Ch9;        use Sem_Ch9;
+with Sem_Ch10;       use Sem_Ch10;
+with Sem_Ch11;       use Sem_Ch11;
+with Sem_Ch12;       use Sem_Ch12;
+with Sem_Ch13;       use Sem_Ch13;
+with Sem_Prag;       use Sem_Prag;
+with Sem_Util;       use Sem_Util;
+with Sinfo;          use Sinfo;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinfo.Utils;    use Sinfo.Utils;
+with Stand;          use Stand;
+with Stylesw;        use Stylesw;
+with Uintp;          use Uintp;
+with Uname;          use Uname;
 
-with Unchecked_Deallocation;
+with Ada.Unchecked_Deallocation;
 
 pragma Warnings (Off, Sem_Util);
 --  Suppress warnings of unused with for Sem_Util (used only in asserts)
@@ -293,6 +297,9 @@ package body Sem is
          when N_Goto_Statement =>
             Analyze_Goto_Statement (N);
 
+         when N_Goto_When_Statement =>
+            Analyze_Goto_When_Statement (N);
+
          when N_Handled_Sequence_Of_Statements =>
             Analyze_Handled_Statements (N);
 
@@ -372,22 +379,22 @@ package body Sem is
             Analyze_Arithmetic_Op (N);
 
          when N_Op_Eq =>
-            Analyze_Equality_Op (N);
+            Analyze_Comparison_Equality_Op (N);
 
          when N_Op_Expon =>
             Analyze_Arithmetic_Op (N);
 
          when N_Op_Ge =>
-            Analyze_Comparison_Op (N);
+            Analyze_Comparison_Equality_Op (N);
 
          when N_Op_Gt =>
-            Analyze_Comparison_Op (N);
+            Analyze_Comparison_Equality_Op (N);
 
          when N_Op_Le =>
-            Analyze_Comparison_Op (N);
+            Analyze_Comparison_Equality_Op (N);
 
          when N_Op_Lt =>
-            Analyze_Comparison_Op (N);
+            Analyze_Comparison_Equality_Op (N);
 
          when N_Op_Minus =>
             Analyze_Unary_Op (N);
@@ -399,7 +406,7 @@ package body Sem is
             Analyze_Arithmetic_Op (N);
 
          when N_Op_Ne =>
-            Analyze_Equality_Op (N);
+            Analyze_Comparison_Equality_Op (N);
 
          when N_Op_Not =>
             Analyze_Negation (N);
@@ -500,6 +507,9 @@ package body Sem is
          when N_Raise_Statement =>
             Analyze_Raise_Statement (N);
 
+         when N_Raise_When_Statement =>
+            Analyze_Raise_When_Statement (N);
+
          when N_Raise_xxx_Error =>
             Analyze_Raise_xxx_Error (N);
 
@@ -520,6 +530,9 @@ package body Sem is
 
          when N_Requeue_Statement =>
             Analyze_Requeue (N);
+
+         when N_Return_When_Statement =>
+            Analyze_Return_When_Statement (N);
 
          when N_Simple_Return_Statement =>
             Analyze_Simple_Return_Statement (N);
@@ -542,6 +555,9 @@ package body Sem is
 
          when N_String_Literal =>
             Analyze_String_Literal (N);
+
+         when N_Interpolated_String_Literal =>
+            Analyze_Interpolated_String_Literal (N);
 
          when N_Subprogram_Body =>
             Analyze_Subprogram_Body (N);
@@ -742,6 +758,29 @@ package body Sem is
       end case;
 
       Debug_A_Exit ("analyzing  ", N, "  (done)");
+
+      --  Set Is_Not_Self_Hidden flag. RM-8.3(16) says a declaration
+      --  is no longer hidden from all visibility after "the end of the
+      --  declaration", so we set the flag here (in addition to setting it
+      --  elsewhere to handle the "except..." cases of 8.3(16)). However,
+      --  we implement 3.8(10) using the same flag, so in that case we
+      --  need to defer the setting until the end of the record.
+
+      declare
+         E : constant Entity_Id := Defining_Entity_Or_Empty (N);
+      begin
+         if Present (E) then
+            if Ekind (E) = E_Void
+              and then Nkind (N) = N_Component_Declaration
+              and then Present (Scope (E))
+              and then Ekind (Scope (E)) = E_Record_Type
+            then
+               null; -- Set it later, in Analyze_Component_Declaration
+            elsif not Is_Not_Self_Hidden (E) then
+               Set_Is_Not_Self_Hidden (E);
+            end if;
+         end if;
+      end;
 
       --  Mark relevant use-type and use-package clauses as effective
       --  preferring the original node over the analyzed one in the case that
@@ -1008,16 +1047,20 @@ package body Sem is
       Scop : Entity_Id;
 
    begin
-      --  Entity is global if defined outside of current outer_generic_scope:
-      --  Either the entity has a smaller depth that the outer generic, or it
+      --  Entity is global if defined outside of current Outer_Generic_Scope:
+      --  Either the entity has a smaller depth than the outer generic, or it
       --  is in a different compilation unit, or it is defined within a unit
-      --  in the same compilation, that is not within the outer_generic.
+      --  in the same compilation, that is not within the outer generic.
 
       if No (Outer_Generic_Scope) then
          return False;
 
-      elsif Scope_Depth (Scope (E)) < Scope_Depth (Outer_Generic_Scope)
-        or else not In_Same_Source_Unit (E, Outer_Generic_Scope)
+      --  It makes no sense to compare depths if not in same unit. Scope_Depth
+      --  is not set for inherited operations.
+
+      elsif not In_Same_Source_Unit (E, Outer_Generic_Scope)
+        or else not Scope_Depth_Set (Scope (E))
+        or else Scope_Depth (Scope (E)) < Scope_Depth (Outer_Generic_Scope)
       then
          return True;
 
@@ -1044,7 +1087,7 @@ package body Sem is
    procedure Initialize is
       Next : Suppress_Stack_Entry_Ptr;
 
-      procedure Free is new Unchecked_Deallocation
+      procedure Free is new Ada.Unchecked_Deallocation
         (Suppress_Stack_Entry, Suppress_Stack_Entry_Ptr);
 
    begin
@@ -1320,7 +1363,15 @@ package body Sem is
       Full_Analysis := False;
       Expander_Mode_Save_And_Set (False);
 
-      Analyze (N);
+      --  See comment in sem_res.adb for Preanalyze_And_Resolve
+
+      if GNATprove_Mode
+        or else Nkind (Parent (N)) = N_Simple_Return_Statement
+      then
+         Analyze (N);
+      else
+         Analyze (N, Suppress => All_Checks);
+      end if;
 
       Expander_Mode_Restore;
       Full_Analysis := Save_Full_Analysis;
@@ -1388,7 +1439,9 @@ package body Sem is
       procedure Do_Analyze is
          Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
          Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
-         --  Save the Ghost-related attributes to restore on exit
+         Saved_ISMP : constant Boolean        :=
+                        Ignore_SPARK_Mode_Pragmas_In_Instance;
+         --  Save Ghost and SPARK mode-related data to restore on exit
 
          --  Generally style checks are preserved across compilations, with
          --  one exception: s-oscons.ads, which allows arbitrary long lines
@@ -1407,6 +1460,7 @@ package body Sem is
          --  Set up a clean environment before analyzing
 
          Install_Ghost_Region (None, Empty);
+         Ignore_SPARK_Mode_Pragmas_In_Instance := False;
 
          Outer_Generic_Scope := Empty;
          Scope_Suppress      := Suppress_Options;
@@ -1429,9 +1483,11 @@ package body Sem is
 
          Pop_Scope;
          Restore_Scope_Stack  (List);
-         Restore_Ghost_Region (Saved_GM, Saved_IGR);
          Style_Max_Line_Length := Saved_ML;
          Style_Check_Max_Line_Length := Saved_CML;
+
+         Restore_Ghost_Region (Saved_GM, Saved_IGR);
+         Ignore_SPARK_Mode_Pragmas_In_Instance := Saved_ISMP;
       end Do_Analyze;
 
       --  Local variables

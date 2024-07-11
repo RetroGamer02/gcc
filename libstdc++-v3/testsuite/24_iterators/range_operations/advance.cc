@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Free Software Foundation, Inc.
+// Copyright (C) 2019-2024 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,8 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do run { target c++2a } }
+// { dg-do run { target c++20 } }
 
 #include <iterator>
 #include <testsuite_hooks.h>
@@ -49,10 +48,12 @@ test01()
   std::ranges::advance(iter, r.begin());
   VERIFY( iter == r.begin() );
 
-  std::ranges::advance(iter, 99, r.end());
+  auto diff = std::ranges::advance(iter, 99, r.end());
   VERIFY( iter == r.end() );
-  std::ranges::advance(iter, -222, r.begin());
+  VERIFY( diff == 97 );
+  diff = std::ranges::advance(iter, -222, r.begin());
   VERIFY( iter == r.begin() );
+  VERIFY( diff == -220 );
 }
 
 void
@@ -77,10 +78,12 @@ test02()
   std::ranges::advance(iter, r.begin());
   VERIFY( iter == r.begin() );
 
-  std::ranges::advance(iter, 99, r.end());
+  auto diff = std::ranges::advance(iter, 99, r.end());
   VERIFY( iter == r.end() );
-  std::ranges::advance(iter, -222, r.begin());
+  VERIFY( diff == 97 );
+  diff = std::ranges::advance(iter, -222, r.begin());
   VERIFY( iter == r.begin() );
+  VERIFY( diff == -220 );
 }
 
 void
@@ -108,15 +111,19 @@ test03()
   std::ranges::advance(iter, r.end());
   VERIFY( iter == r.end() );
 
-  std::ranges::advance(iter, 99, r.end());
+  auto diff = std::ranges::advance(iter, 99, r.end());
   VERIFY( iter == r.end() );
-  std::ranges::advance(iter, 99, r.end());
+  VERIFY( diff == 99 ); // PR libstdc++/100833
+  diff = std::ranges::advance(iter, 99, r.end());
   VERIFY( iter == r.end() );
+  VERIFY( diff == 99 );
   iter = r.begin();
-  std::ranges::advance(iter, 99, r.end());
+  diff = std::ranges::advance(iter, 99, r.end());
   VERIFY( iter == r.end() );
-  std::ranges::advance(iter, 99, r.end());
+  VERIFY( diff == 97 );
+  diff = std::ranges::advance(iter, 99, r.end());
   VERIFY( iter == r.end() );
+  VERIFY( diff == 99 );
 }
 
 void
@@ -145,17 +152,21 @@ test04()
   std::ranges::advance(iter, r2.end());
   VERIFY( iter == r2.end() );
 
-  std::ranges::advance(iter, 99, r2.end());
+  auto diff = std::ranges::advance(iter, 99, r2.end());
   VERIFY( iter == r2.end() );
-  std::ranges::advance(iter, 99, r2.end());
+  VERIFY( diff == 99 );
+  diff = std::ranges::advance(iter, 99, r2.end());
   VERIFY( iter == r2.end() );
+  VERIFY( diff == 99 );
 
   test_range<int, input_iterator_wrapper> r3(a);
   iter = r3.begin();
-  std::ranges::advance(iter, 99, r3.end());
+  diff = std::ranges::advance(iter, 99, r3.end());
   VERIFY( iter == r3.end() );
-  std::ranges::advance(iter, 99, r3.end());
+  VERIFY( diff == 97 );
+  diff = std::ranges::advance(iter, 99, r3.end());
   VERIFY( iter == r3.end() );
+  VERIFY( diff == 99 );
 }
 
 void
@@ -180,17 +191,21 @@ test05()
   std::ranges::advance(iter, r2.end());
   VERIFY( iter == r2.end() );
 
-  std::ranges::advance(iter, 99, r2.end());
+  auto diff = std::ranges::advance(iter, 99, r2.end());
   VERIFY( iter == r2.end() );
-  std::ranges::advance(iter, 99, r2.end());
+  VERIFY( diff == 99 );
+  diff = std::ranges::advance(iter, 99, r2.end());
   VERIFY( iter == r2.end() );
+  VERIFY( diff == 99 );
 
   test_range<int, output_iterator_wrapper> r3(a);
   iter = r3.begin();
-  std::ranges::advance(iter, 99, r3.end());
+  diff = std::ranges::advance(iter, 99, r3.end());
   VERIFY( iter == r3.end() );
-  std::ranges::advance(iter, 99, r3.end());
+  VERIFY( diff == 97 );
+  diff = std::ranges::advance(iter, 99, r3.end());
   VERIFY( iter == r3.end() );
+  VERIFY( diff == 99 );
 }
 
 int

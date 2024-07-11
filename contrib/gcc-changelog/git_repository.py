@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+# Copyright (C) 2020-2024 Free Software Foundation, Inc.
 #
 # This file is part of GCC.
 #
@@ -14,7 +16,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GCC; see the file COPYING3.  If not see
-# <http://www.gnu.org/licenses/>.  */
+# <http://www.gnu.org/licenses/>.
 
 from datetime import datetime
 
@@ -29,7 +31,7 @@ except ImportError:
 from git_commit import GitCommit, GitInfo, decode_path
 
 
-def parse_git_revisions(repo_path, revisions, strict=True):
+def parse_git_revisions(repo_path, revisions, ref_name=None):
     repo = Repo(repo_path)
 
     def commit_to_info(commit):
@@ -72,7 +74,8 @@ def parse_git_revisions(repo_path, revisions, strict=True):
         commits = [repo.commit(revisions)]
 
     for commit in commits:
-        git_commit = GitCommit(commit_to_info(commit.hexsha), strict=strict,
-                               commit_to_info_hook=commit_to_info)
+        git_commit = GitCommit(commit_to_info(commit.hexsha),
+                               commit_to_info_hook=commit_to_info,
+                               ref_name=ref_name)
         parsed_commits.append(git_commit)
     return parsed_commits

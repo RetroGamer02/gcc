@@ -5,11 +5,10 @@
  *
  * Authors: Vladimir Vlasov
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_setupapi.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_setupapi.d)
  */
 module core.sys.windows.setupapi;
 version (Windows):
-@system:
 
 version (ANSI) {} else version = Unicode;
 pragma(lib, "setupapi");
@@ -859,7 +858,7 @@ enum : DWORD {
 
 alias PVOID HINF;
 alias PVOID HDSKSPC;
-mixin DECLARE_HANDLE!("HDEVINFO");
+alias HDEVINFO = HANDLE;
 alias PVOID HSPFILEQ;
 alias PVOID HSPFILELOG;
 

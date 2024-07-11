@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -58,15 +58,6 @@ package Errout is
 
    Error_Msg_Exception : exception renames Err_Vars.Error_Msg_Exception;
    --  Exception raised if Raise_Exception_On_Error is true
-
-   Warning_Doc_Switch : Boolean renames Err_Vars.Warning_Doc_Switch;
-   --  If this is set True, then the ??/?*?/?$?/?x?/?X? insertion sequences in
-   --  error messages generate appropriate tags for the output error messages.
-   --  If this switch is False, then these sequences are still recognized (for
-   --  the purposes of implementing the pattern matching in pragmas Warnings
-   --  (Off,..) and Warning_As_Pragma(...) but do not result in adding the
-   --  error message tag. The -gnatw.d switch sets this flag True, -gnatw.D
-   --  sets this flag False.
 
    Current_Node : Node_Id := Empty;
    --  Used by Error_Msg as a default Node_Id.
@@ -272,14 +263,13 @@ package Errout is
    --      avoided. This is currently used by the Compile_Time_Warning pragma
    --      to ensure the message for a with'ed unit is output, and for warnings
    --      on ineffective back-end inlining, which is detected in units that
-   --      contain subprograms to be inlined in the main program. It is also
-   --      used by the Compiler_Unit_Warning pragma for similar reasons.
+   --      contain subprograms to be inlined in the main program.
 
-   --    Insertion character ? (Question: warning message)
+   --    Insertion character ? (Question: warning message -- OBSOLETE)
    --      The character ? appearing anywhere in a message makes the message
    --      warning instead of a normal error message, and the text of the
    --      message will be preceded by "warning:" in the normal case. The
-   --      handling of warnings if further controlled by the Warning_Mode
+   --      handling of warnings is further controlled by the Warning_Mode
    --      option (-w switch), see package Opt for further details, and also by
    --      the current setting from pragma Warnings. This pragma applies only
    --      to warnings issued from the semantic phase (not the parser), but
@@ -302,28 +292,24 @@ package Errout is
    --      clear that the continuation is part of a warning message, but it is
    --      not necessary to go through any computational effort to include it.
    --
-   --      Note: this usage is obsolete, use ?? ?*? ?$? ?x? ?X? to specify
-   --      the string to be added when Warn_Doc_Switch is set to True. If this
-   --      switch is True, then for simple ? messages it has no effect. This
-   --      simple form is to ease transition and may be removed later except
-   --      for GNATprove-specific messages (info and warnings) which are not
-   --      subject to the same GNAT warning switches.
+   --      Note: this usage is obsolete; use ?? ?*? ?$? ?x? ?.x? ?_x? to
+   --      specify the string to be added when Warn_Doc_Switch is set to True.
+   --      If this switch is True, then for simple ? messages it has no effect.
+   --      This simple form is to ease transition and may be removed later
+   --      except for GNATprove-specific messages (info and warnings) which are
+   --      not subject to the same GNAT warning switches.
 
    --    Insertion character ?? (Two question marks: default warning)
    --      Like ?, but if the flag Warn_Doc_Switch is True, adds the string
    --      "[enabled by default]" at the end of the warning message. For
    --      continuations, use this in each continuation message.
 
-   --    Insertion character ?x? (warning with switch)
-   --      Like ?, but if the flag Warn_Doc_Switch is True, adds the string
-   --      "[-gnatwx]" at the end of the warning message. x is a lower case
-   --      letter. For continuations, use this on each continuation message.
-
-   --    Insertion character ?X? (warning with dot switch)
-   --      Like ?, but if the flag Warn_Doc_Switch is True, adds the string
-   --      "[-gnatw.x]" at the end of the warning message. X is an upper case
-   --      letter corresponding to the lower case letter x in the message.
-   --      For continuations, use this on each continuation message.
+   --    Insertion character ?x? ?.x? ?_x? (warning with switch)
+   --      "x" is a (lower-case) warning switch character.
+   --      Like ??, but if the flag Warn_Doc_Switch is True, adds the string
+   --      "[-gnatwx]", "[-gnatw.x]", "[-gnatw_x]", or "[-gnatyx]" (for style
+   --      messages), at the end of the warning message. For continuations, use
+   --      this on each continuation message.
 
    --    Insertion character ?*? (restriction warning)
    --      Like ?, but if the flag Warn_Doc_Switch is True, adds the string
@@ -339,8 +325,8 @@ package Errout is
    --    Insertion character < (Less Than: conditional warning message)
    --      The character < appearing anywhere in a message is used for a
    --      conditional error message. If Error_Msg_Warn is True, then the
-   --      effect is the same as ? described above, and in particular << <X<
-   --      <x< <$< <*< have the effect of ?? ?X? ?x? ?$? ?*? respectively. If
+   --      effect is the same as ? described above, and in particular << <x<
+   --      <$< <*< have the effect of ?? ?x? ?$? ?*? respectively. If
    --      Error_Msg_Warn is False, then the < << or <X< sequence is ignored
    --      and the message is treated as a error rather than a warning.
 
@@ -418,6 +404,10 @@ package Errout is
    --      This is like [ except that the insertion messages say may/might,
    --      instead of will/would.
 
+   --    Insertion sequence [] (Left and right brackets: error code)
+   --      The insertion sequence [] should be replaced by an error code, whose
+   --      value is given by Error_Msg_Code.
+
    --    Insertion sequence "(style)" (style message)
    --      This appears only at the start of the message (and not any of its
    --      continuations, if any), and indicates that the message is a style
@@ -468,12 +458,20 @@ package Errout is
    Error_Msg_Uint_2 : Uint renames Err_Vars.Error_Msg_Uint_2;
    --  Uint values for ^ insertion characters in message
 
+   Error_Msg_Code_Digits : constant := Err_Vars.Error_Msg_Code_Digits;
+   Error_Msg_Code : Nat renames Err_Vars.Error_Msg_Code;
+   --  Nat value for [] insertion sequence in message, where a value of zero
+   --  indicates the absence of an error code.
+
    Error_Msg_Sloc : Source_Ptr renames Err_Vars.Error_Msg_Sloc;
    --  Source location for # insertion character in message
 
    Error_Msg_Name_1 : Name_Id renames Err_Vars.Error_Msg_Name_1;
    Error_Msg_Name_2 : Name_Id renames Err_Vars.Error_Msg_Name_2;
    Error_Msg_Name_3 : Name_Id renames Err_Vars.Error_Msg_Name_3;
+   Error_Msg_Name_4 : Name_Id renames Err_Vars.Error_Msg_Name_4;
+   Error_Msg_Name_5 : Name_Id renames Err_Vars.Error_Msg_Name_5;
+   Error_Msg_Name_6 : Name_Id renames Err_Vars.Error_Msg_Name_6;
    --  Name_Id values for % insertion characters in message
 
    Error_Msg_File_1 : File_Name_Type renames Err_Vars.Error_Msg_File_1;
@@ -487,6 +485,10 @@ package Errout is
 
    Error_Msg_Node_1 : Node_Id renames Err_Vars.Error_Msg_Node_1;
    Error_Msg_Node_2 : Node_Id renames Err_Vars.Error_Msg_Node_2;
+   Error_Msg_Node_3 : Node_Id renames Err_Vars.Error_Msg_Node_3;
+   Error_Msg_Node_4 : Node_Id renames Err_Vars.Error_Msg_Node_4;
+   Error_Msg_Node_5 : Node_Id renames Err_Vars.Error_Msg_Node_5;
+   Error_Msg_Node_6 : Node_Id renames Err_Vars.Error_Msg_Node_6;
    --  Node_Id values for & insertion characters in message
 
    Error_Msg_Qual_Level : Nat renames Err_Vars.Error_Msg_Qual_Level;
@@ -519,7 +521,7 @@ package Errout is
    --  The prefixes error and warning are supplied automatically (depending
    --  on the use of the ? insertion character), and the call to the error
    --  message routine supplies the text. The "error: " prefix is omitted
-   --  in brief error message formats.
+   --  if -gnatd_U is among the options given to gnat.
 
    --  Reserved Ada keywords in the message are in the default keyword case
    --  (determined from the given source program), surrounded by quotation
@@ -605,6 +607,26 @@ package Errout is
    function Get_Location (E : Error_Msg_Id) return Source_Ptr
      renames Erroutc.Get_Location;
    --  Returns the flag location of the error message with the given id E
+
+   ------------------------
+   -- GNAT Explain Codes --
+   ------------------------
+
+   --  Explain codes are used in GNATprove to provide more information on
+   --  selected error/warning messages. The subset of those codes used in
+   --  the GNAT frontend are defined here.
+
+   GEC_None                                 : constant := 0000;
+   GEC_Volatile_At_Library_Level            : constant := 0001;
+   GEC_Type_Early_Call_Region               : constant := 0003;
+   GEC_Volatile_Non_Interfering_Context     : constant := 0004;
+   GEC_Required_Part_Of                     : constant := 0009;
+   GEC_Ownership_Moved_Object               : constant := 0010;
+   GEC_SPARK_Mode_On_Not_Library_Level      : constant := 0011;
+   GEC_Output_In_Function_Global_Or_Depends : constant := 0014;
+   GEC_Out_Parameter_In_Function            : constant := 0015;
+   GEC_Always_Terminates_On_Function        : constant := 0016;
+   GEC_Exceptional_Cases_On_Function        : constant := 0017;
 
    ------------------------
    -- List Pragmas Table --
@@ -703,18 +725,24 @@ package Errout is
    procedure Error_Msg
      (Msg : String; Flag_Location : Source_Ptr);
    procedure Error_Msg
+     (Msg : String; Flag_Span : Source_Span);
+   procedure Error_Msg
      (Msg : String; Flag_Location : Source_Ptr; N : Node_Id);
+   procedure Error_Msg
+     (Msg : String; Flag_Span : Source_Span; N : Node_Id);
    --  Output a message at specified location. Can be called from the parser
    --  or the semantic analyzer. If N is set, points to the relevant node for
-   --  this message.
+   --  this message. The version with a span is preferred whenever possible,
+   --  in other cases the version with a location can still be used.
 
    procedure Error_Msg
      (Msg                    : String;
       Flag_Location          : Source_Ptr;
+      N                      : Node_Id;
       Is_Compile_Time_Pragma : Boolean);
-   --  Same as Error_Msg (String, Source_Ptr) except Is_Compile_Time_Pragma
-   --  lets the caller specify whether this is a Compile_Time_Warning or
-   --  Compile_Time_Error pragma.
+   --  Same as Error_Msg (String, Source_Ptr, Node_Id) except
+   --  Is_Compile_Time_Pragma lets the caller specify whether this is a
+   --  Compile_Time_Warning or Compile_Time_Error pragma.
 
    procedure Error_Msg_S (Msg : String);
    --  Output a message at current scan pointer location. This routine can be
@@ -782,8 +810,13 @@ package Errout is
       N             : Node_Or_Entity_Id;
       E             : Node_Or_Entity_Id;
       Flag_Location : Source_Ptr);
+   procedure Error_Msg_NEL
+     (Msg       : String;
+      N         : Node_Or_Entity_Id;
+      E         : Node_Or_Entity_Id;
+      Flag_Span : Source_Span);
    --  Exactly the same as Error_Msg_NE, except that the flag is placed at
-   --  the specified Flag_Location instead of at Sloc (N).
+   --  the specified Flag_Location/Flag_Span instead of at Sloc (N).
 
    procedure Error_Msg_NW
      (Eflag : Boolean;
@@ -801,12 +834,17 @@ package Errout is
    --  the given text. This text may contain insertion characters in the
    --  usual manner, and need not be the same length as the original text.
 
+   procedure First_And_Last_Nodes
+     (C                     : Node_Id;
+      First_Node, Last_Node : out Node_Id);
+   --  Given a construct C, finds the first and last node in the construct,
+   --  i.e. the ones with the lowest and highest Sloc value. This is useful in
+   --  placing error msgs. Note that this procedure uses Original_Node to look
+   --  at the original source tree, since that's what we want for placing an
+   --  error message flag in the right place.
+
    function First_Node (C : Node_Id) return Node_Id;
-   --  Given a construct C, finds the first node in the construct, i.e. the one
-   --  with the lowest Sloc value. This is useful in placing error msgs. Note
-   --  that this procedure uses Original_Node to look at the original source
-   --  tree, since that's what we want for placing an error message flag in
-   --  the right place.
+   --  Return the first output of First_And_Last_Nodes
 
    function First_Sloc (N : Node_Id) return Source_Ptr;
    --  Given the node for an expression, return a source pointer value that
@@ -816,6 +854,15 @@ package Errout is
 
    function Get_Ignore_Errors return Boolean;
    --  Return True if all error calls are ignored.
+
+   function Last_Node (C : Node_Id) return Node_Id;
+   --  Return the last output of First_And_Last_Nodes
+
+   function Last_Sloc (N : Node_Id) return Source_Ptr;
+   --  Given the node for an expression, return a source pointer value that
+   --  points to the end of the last token in the expression. In the case
+   --  where the expression is parenthesized, an attempt is made to include
+   --  the parentheses (i.e. to return the location of the final paren).
 
    procedure Purge_Messages (From : Source_Ptr; To : Source_Ptr)
      renames Erroutc.Purge_Messages;
@@ -832,11 +879,6 @@ package Errout is
    procedure Remove_Warning_Messages (L : List_Id);
    --  Remove warnings on all elements of a list (Calls Remove_Warning_Messages
    --  on each element of the list, see above).
-
-   procedure Reset_Warnings;
-   --  Reset the counts related to warnings. This is used both to initialize
-   --  these counts and to reset them after each phase of analysis for a given
-   --  value of Opt.Warning_Mode in gnat2why.
 
    procedure Set_Ignore_Errors (To : Boolean);
    --  Following a call to this procedure with To=True, all error calls are
@@ -855,7 +897,7 @@ package Errout is
    --  location from which warnings are to be turned back on.
 
    procedure Set_Specific_Warning_Off
-     (Loc    : Source_Ptr;
+     (Node   : Node_Id;
       Msg    : String;
       Reason : String_Id;
       Config : Boolean;
@@ -885,11 +927,10 @@ package Errout is
    --  matching Warnings Off pragma preceding this one.
 
    function Compilation_Errors return Boolean;
-   --  Returns True if errors have been detected, or warnings in -gnatwe (treat
-   --  warnings as errors) mode. Note that it is mandatory to call Finalize
-   --  before calling this routine. To account for changes to Warning_Mode in
-   --  gnat2why between phases, the past or current presence of an error is
-   --  recorded in a global variable at each call.
+   --  Returns True if errors have been detected, or warnings when they are
+   --  treated as errors, which corresponds to switch -gnatwe in the compiler,
+   --  and other switches in other tools. Note that it is mandatory to call
+   --  Finalize before calling this routine.
 
    procedure Error_Msg_CRT (Feature : String; N : Node_Id);
    --  Posts a non-fatal message on node N saying that the feature identified
@@ -915,8 +956,21 @@ package Errout is
    --  contain error message insertion characters in the normal manner, and in
    --  particular may start with | to flag a non-serious error.
 
-   procedure Error_Msg_Ada_2020_Feature (Feature : String; Loc : Source_Ptr);
-   --  Analogous to Error_Msg_Ada_2012_Feature
+   procedure Error_Msg_Ada_2022_Feature (Feature : String; Loc : Source_Ptr);
+   --  Analogous to Error_Msg_Ada_2012_Feature, for Ada 2022
+
+   procedure Error_Msg_GNAT_Extension
+    (Extension         : String;
+     Loc               : Source_Ptr;
+     Is_Core_Extension : Boolean := False);
+   --  To be called as part of checking a GNAT language extension (either a
+   --  core extension or not, as indicated by the Is_Core_Extension parameter).
+   --  If switch -gnatX0 or pragma Extension_Allowed (All) is in effect, then
+   --  either kind of extension is allowed; if switch -gnatX or pragma
+   --  Extensions_Allowed (On) is in effect, then only core extensions are
+   --  allowed. Otherwise, no extensions are allowed. A disallowed construct
+   --  is flagged as an error. Loc indicates the source location of the
+   --  extension construct.
 
    procedure dmsg (Id : Error_Msg_Id) renames Erroutc.dmsg;
    --  Debugging routine to dump an error message
@@ -956,13 +1010,10 @@ package Errout is
    --  the name at that source location, we copy the casing from the source,
    --  otherwise we set appropriate default casing.
 
-   procedure Adjust_Name_Case (Loc : Source_Ptr);
-   --  Uses Buf => Global_Name_Buffer. There are no calls to this in the
-   --  compiler, but it is called in SPARK 2014.
-
    procedure Set_Identifier_Casing
      (Identifier_Name : System.Address;
       File_Name       : System.Address);
+   pragma Convention (C, Set_Identifier_Casing);
    --  This subprogram can be used by the back end for the purposes of
    --  concocting error messages that are not output via Errout, e.g.
    --  the messages generated by the gcc back end.
@@ -982,8 +1033,8 @@ package Errout is
    Size_Too_Small_Message : constant String :=
      "size for& too small, minimum allowed is ^";
    --  This message is printed in Freeze and Sem_Ch13. We also test for it in
-   --  the body of this package (see Special_Msg_Delete) ???which is somewhat
-   --  questionable. The Is_Size_Too_Small_Message function tests for it by
-   --  testing a prefix. The function and constant should be kept in synch.
+   --  the body of this package (see Special_Msg_Delete).
+   --  Function Is_Size_Too_Small_Message tests for it by testing a prefix.
+   --  The function and constant should be kept in synch.
 
 end Errout;

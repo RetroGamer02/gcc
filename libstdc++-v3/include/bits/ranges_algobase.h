@@ -1,6 +1,6 @@
 // Core algorithmic facilities -*- C++ -*-
 
-// Copyright (C) 2020-2021 Free Software Foundation, Inc.
+// Copyright (C) 2020-2024 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -33,10 +33,13 @@
 #if __cplusplus > 201703L
 
 #include <compare>
-#include <iterator>
+#include <bits/stl_iterator_base_funcs.h>
+#include <bits/stl_iterator.h>
+#include <bits/stl_algobase.h> // __memcpy
 #include <bits/ranges_base.h> // ranges::begin, ranges::range etc.
 #include <bits/invoke.h>      // __invoke
 #include <bits/cpp_type_traits.h> // __is_byte
+#include <bits/stl_algobase.h> // __memcmp
 
 #if __cpp_lib_concepts
 namespace std _GLIBCXX_VISIBILITY(default)
@@ -68,6 +71,29 @@ namespace ranges
       constexpr inline bool
 	__is_move_iterator<move_iterator<_Iterator>> = true;
   } // namespace __detail
+
+#if __glibcxx_ranges_iota >= 202202L // C++ >= 23
+  template<typename _Out, typename _Tp>
+    struct out_value_result
+    {
+      [[no_unique_address]] _Out out;
+      [[no_unique_address]] _Tp value;
+
+      template<typename _Out2, typename _Tp2>
+	requires convertible_to<const _Out&, _Out2>
+	  && convertible_to<const _Tp&, _Tp2>
+	constexpr
+	operator out_value_result<_Out2, _Tp2>() const &
+	{ return {out, value}; }
+
+      template<typename _Out2, typename _Tp2>
+	requires convertible_to<_Out, _Out2>
+	  && convertible_to<_Tp, _Tp2>
+	constexpr
+	operator out_value_result<_Out2, _Tp2>() &&
+	{ return {std::move(out), std::move(value)}; }
+    };
+#endif // __glibcxx_ranges_iota
 
   struct __equal_fn
   {
@@ -195,9 +221,9 @@ namespace ranges
     requires (_IsMove
 	      ? indirectly_movable<_Iter, _Out>
 	      : indirectly_copyable<_Iter, _Out>)
-    constexpr conditional_t<_IsMove,
-			    move_backward_result<_Iter, _Out>,
-			    copy_backward_result<_Iter, _Out>>
+    constexpr __conditional_t<_IsMove,
+			      move_backward_result<_Iter, _Out>,
+			      copy_backward_result<_Iter, _Out>>
     __copy_or_move_backward(_Iter __first, _Sent __last, _Out __result);
 
   template<bool _IsMove,
@@ -206,9 +232,9 @@ namespace ranges
     requires (_IsMove
 	      ? indirectly_movable<_Iter, _Out>
 	      : indirectly_copyable<_Iter, _Out>)
-    constexpr conditional_t<_IsMove,
-			    move_result<_Iter, _Out>,
-			    copy_result<_Iter, _Out>>
+    constexpr __conditional_t<_IsMove,
+			      move_result<_Iter, _Out>,
+			      copy_result<_Iter, _Out>>
     __copy_or_move(_Iter __first, _Sent __last, _Out __result)
     {
       // TODO: implement more specializations to be at least on par with
@@ -238,20 +264,18 @@ namespace ranges
 	{
 	  auto [__in,__out]
 	    = ranges::__copy_or_move<_IsMove>(__first.base(), __last.base(),
-					      __result);
+					      std::move(__result));
 	  return {decltype(__first){__in}, std::move(__out)};
 	}
       else if constexpr (__is_normal_iterator<_Out>)
 	{
 	  auto [__in,__out]
-	    = ranges::__copy_or_move<_IsMove>(__first, __last, __result.base());
+	    = ranges::__copy_or_move<_IsMove>(std::move(__first), __last, __result.base());
 	  return {std::move(__in), decltype(__result){__out}};
 	}
       else if constexpr (sized_sentinel_for<_Sent, _Iter>)
 	{
-#ifdef __cpp_lib_is_constant_evaluated
-	  if (!std::is_constant_evaluated())
-#endif
+	  if (!std::__is_constant_evaluated())
 	    {
 	      if constexpr (__memcpyable<_Iter, _Out>::__value)
 		{
@@ -349,9 +373,9 @@ namespace ranges
     requires (_IsMove
 	      ? indirectly_movable<_Iter, _Out>
 	      : indirectly_copyable<_Iter, _Out>)
-    constexpr conditional_t<_IsMove,
-			    move_backward_result<_Iter, _Out>,
-			    copy_backward_result<_Iter, _Out>>
+    constexpr __conditional_t<_IsMove,
+			      move_backward_result<_Iter, _Out>,
+			      copy_backward_result<_Iter, _Out>>
     __copy_or_move_backward(_Iter __first, _Sent __last, _Out __result)
     {
       // TODO: implement more specializations to be at least on par with
@@ -386,9 +410,7 @@ namespace ranges
 	}
       else if constexpr (sized_sentinel_for<_Sent, _Iter>)
 	{
-#ifdef __cpp_lib_is_constant_evaluated
-	  if (!std::is_constant_evaluated())
-#endif
+	  if (!std::__is_constant_evaluated())
 	    {
 	      if constexpr (__memcpyable<_Out, _Iter>::__value)
 		{
@@ -525,17 +547,23 @@ namespace ranges
 	if (__n <= 0)
 	  return __first;
 
-	// TODO: Generalize this optimization to contiguous iterators.
-	if constexpr (is_pointer_v<_Out>
-		      // Note that __is_byte already implies !is_volatile.
-		      && __is_byte<remove_pointer_t<_Out>>::__value
-		      && integral<_Tp>)
+	if constexpr (is_scalar_v<_Tp>)
 	  {
-	    __builtin_memset(__first, static_cast<unsigned char>(__value), __n);
-	    return __first + __n;
-	  }
-	else if constexpr (is_scalar_v<_Tp>)
-	  {
+	    // TODO: Generalize this optimization to contiguous iterators.
+	    if constexpr (is_pointer_v<_Out>
+			  // Note that __is_byte already implies !is_volatile.
+			  && __is_byte<remove_pointer_t<_Out>>::__value
+			  && integral<_Tp>)
+	      {
+		if (!std::__is_constant_evaluated())
+		  {
+		    __builtin_memset(__first,
+				     static_cast<unsigned char>(__value),
+				     __n);
+		    return __first + __n;
+		  }
+	      }
+
 	    const auto __tmp = __value;
 	    for (; __n > 0; --__n, (void)++__first)
 	      *__first = __tmp;
